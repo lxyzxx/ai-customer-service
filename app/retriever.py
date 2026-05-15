@@ -37,19 +37,108 @@ class Chunk:
     document_id: int
     title: str
     content: str
+    position: int = 0
 
 
 @dataclass(frozen=True)
 class RetrievalHit:
     chunk: Chunk
     score: float
+    context: str = ""
+    evidence: tuple[str, ...] = ()
 
 
 def tokenize(text: str) -> list[str]:
     return [t.lower() for t in TOKEN_RE.findall(text) if t.lower() not in STOPWORDS]
 
 
-def _tfidf_vectors(query: str, chunks: list[Chunk]) -> tuple[Counter[str], list[Counter[str]], dict[str, float]]:
+def extract_clues(query: str) -> list[str]:
+    """Extract exact lexical clues before falling back to token scoring."""
+    phrases = re.findall(r"[a-zA-Z0-9_]{2,}|[\u4e00-\u9fff]{2,}", query.lower())
+    tokens = [
+        token
+        for token in tokenize(query)
+        if len(token) > 1 or re.fullmatch(r"[a-zA-Z0-9_]+", token)
+    ]
+
+    clues: list[str] = []
+    for item in [*phrases, *tokens]:
+        if item not in clues:
+            clues.append(item)
+    return clues
+
+
+def _common_chinese_spans(clue: str, target: str, limit: int = 3) -> list[str]:
+    if not re.fullmatch(r"[\u4e00-\u9fff]+", clue):
+        return []
+
+    spans: list[str] = []
+    occupied: set[int] = set()
+    for size in range(len(clue), 1, -1):
+        for start in range(0, len(clue) - size + 1):
+            span = clue[start : start + size]
+            if span not in target:
+                continue
+            if any(index in occupied for index in range(start, start + size)):
+                continue
+
+            spans.append(span)
+            occupied.update(range(start, start + size))
+            if len(spans) >= limit:
+                return spans
+    return spans
+
+
+def _matched_clues(clue: str, text: str) -> list[str]:
+    clue_lower = clue.lower()
+    text_lower = text.lower()
+    if clue_lower in text_lower:
+        return [clue]
+    return _common_chinese_spans(clue, text_lower)
+
+
+def search_corpus(
+    clues: list[str],
+    chunks: list[Chunk],
+) -> dict[int, tuple[float, tuple[str, ...]]]:
+    """Search raw chunks for exact clue matches, similar to grep over a corpus."""
+    matches: dict[int, tuple[float, tuple[str, ...]]] = {}
+    for clue in clues:
+        for chunk in chunks:
+            content_matches = _matched_clues(clue, chunk.content)
+            title_matches = _matched_clues(clue, chunk.title)
+            matched_terms = [*content_matches, *title_matches]
+            if not matched_terms:
+                continue
+
+            weight = 2.0 if content_matches else 1.0
+            if max(len(term) for term in matched_terms) >= 4:
+                weight += 0.8
+            current_score, current_evidence = matches.get(chunk.id, (0.0, ()))
+            evidence = current_evidence
+            for term in matched_terms:
+                reason = f"原文命中 `{term}`"
+                if reason not in evidence:
+                    evidence = (*evidence, reason)
+            matches[chunk.id] = (current_score + weight, evidence)
+    return matches
+
+
+def read_context(chunk: Chunk, chunks: list[Chunk], window: int = 1) -> str:
+    """Read neighboring chunks from the same document for local context checks."""
+    neighbors = [
+        item
+        for item in chunks
+        if item.document_id == chunk.document_id and abs(item.position - chunk.position) <= window
+    ]
+    neighbors.sort(key=lambda item: item.position)
+    return "\n\n".join(item.content for item in neighbors)
+
+
+def _tfidf_vectors(
+    query: str,
+    chunks: list[Chunk],
+) -> tuple[Counter[str], list[Counter[str]], dict[str, float]]:
     query_tf = Counter(tokenize(query))
     doc_tfs = [Counter(tokenize(chunk.content)) for chunk in chunks]
     doc_count = max(1, len(doc_tfs))
@@ -91,10 +180,28 @@ def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[RetrievalH
     if not query.strip() or not chunks:
         return []
 
+    clues = extract_clues(query)
+    exact_matches = search_corpus(clues, chunks)
     query_tf, doc_tfs, idf = _tfidf_vectors(query, chunks)
-    hits = [
-        RetrievalHit(chunk=chunk, score=_cosine(query_tf, doc_tf, idf))
-        for chunk, doc_tf in zip(chunks, doc_tfs, strict=True)
-    ]
-    return [hit for hit in sorted(hits, key=lambda h: h.score, reverse=True)[:top_k] if hit.score > 0]
+    hits: list[RetrievalHit] = []
+    for chunk, doc_tf in zip(chunks, doc_tfs, strict=True):
+        lexical_score, evidence = exact_matches.get(chunk.id, (0.0, ()))
+        tfidf_score = _cosine(query_tf, doc_tf, idf)
+        if lexical_score == 0.0 and tfidf_score == 0.0:
+            continue
 
+        combined_score = lexical_score + tfidf_score
+        if tfidf_score > 0.0:
+            evidence = (*evidence, "TF-IDF 弱线索召回")
+        evidence = evidence[:8]
+        hits.append(
+            RetrievalHit(
+                chunk=chunk,
+                score=combined_score,
+                context=read_context(chunk, chunks),
+                evidence=evidence,
+            )
+        )
+
+    sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
+    return [hit for hit in sorted_hits[:top_k] if hit.score > 0]

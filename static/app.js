@@ -9,10 +9,17 @@ const docContent = document.querySelector("#doc-content");
 
 let sessionId = localStorage.getItem("ai-customer-service-session-id") || "";
 
-function addMessage(role, content, sources = []) {
+function addMessage(role, content, sources = [], route = null) {
   const item = document.createElement("article");
   item.className = `message ${role}`;
   item.textContent = content;
+
+  if (route) {
+    const routeItem = document.createElement("div");
+    routeItem.className = "route";
+    routeItem.textContent = `分层：${route.layer} / ${route.handler}。${route.reason}`;
+    item.appendChild(routeItem);
+  }
 
   if (sources.length > 0) {
     const sourceList = document.createElement("div");
@@ -20,8 +27,15 @@ function addMessage(role, content, sources = []) {
     sources.forEach((source, index) => {
       const sourceItem = document.createElement("div");
       sourceItem.className = "source";
-      const text = source.content.length > 120 ? `${source.content.slice(0, 120)}...` : source.content;
-      sourceItem.textContent = `来源 ${index + 1}：${source.title}，相关度 ${source.score}。${text}`;
+      const sourceText = source.context || source.content;
+      const text = sourceText.length > 140 ? `${sourceText.slice(0, 140)}...` : sourceText;
+      const evidence =
+        source.evidence && source.evidence.length > 0
+          ? source.evidence.join("；")
+          : "相关片段召回";
+      sourceItem.textContent =
+        `来源 ${index + 1}：${source.title}，证据：${evidence}，` +
+        `相关度 ${source.score}。${text}`;
       sourceList.appendChild(sourceItem);
     });
     item.appendChild(sourceList);
@@ -86,7 +100,7 @@ chatForm.addEventListener("submit", async (event) => {
     sessionId = data.session_id;
     localStorage.setItem("ai-customer-service-session-id", sessionId);
     chat.lastElementChild.remove();
-    addMessage("assistant", data.answer, data.sources);
+    addMessage("assistant", data.answer, data.sources, data.route);
   } catch (error) {
     chat.lastElementChild.remove();
     addMessage("assistant", `请求失败：${error.message}`);
@@ -118,4 +132,4 @@ checkHealth().catch(() => {
 loadDocuments().catch(() => {
   documentsEl.innerHTML = '<div class="empty">加载失败</div>';
 });
-addMessage("assistant", "你好，我可以根据知识库回答客服问题。");
+addMessage("assistant", "你好，我会先检索知识库原文并核验上下文，再回答客服问题。");

@@ -1,7 +1,7 @@
 import unittest
 
 from app.chunker import chunk_text
-from app.retriever import Chunk, retrieve, tokenize
+from app.retriever import Chunk, extract_clues, read_context, retrieve, search_corpus, tokenize
 
 
 class RetrieverTest(unittest.TestCase):
@@ -20,8 +20,32 @@ class RetrieverTest(unittest.TestCase):
         ]
         hits = retrieve("物流一直没有更新怎么办", chunks, top_k=1)
         self.assertEqual(hits[0].chunk.title, "物流")
+        self.assertIn("原文命中 `物流`", hits[0].evidence)
+
+    def test_extract_clues_keeps_exact_chinese_phrase(self) -> None:
+        clues = extract_clues("定制商品超过 48 小时还能退款吗")
+        self.assertIn("定制商品超过", clues)
+        self.assertIn("48", clues)
+
+    def test_search_corpus_combines_sparse_clues(self) -> None:
+        chunks = [
+            Chunk(id=1, document_id=1, title="普通退款", content="普通商品支持 7 天无理由退款。"),
+            Chunk(id=2, document_id=2, title="定制商品", content="定制商品不支持 7 天无理由退款。"),
+        ]
+        matches = search_corpus(["定制商品", "退款"], chunks)
+        self.assertGreater(matches[2][0], matches[1][0])
+
+    def test_read_context_returns_neighboring_chunks(self) -> None:
+        chunks = [
+            Chunk(id=1, document_id=1, title="售后", content="第一段", position=0),
+            Chunk(id=2, document_id=1, title="售后", content="第二段", position=1),
+            Chunk(id=3, document_id=2, title="物流", content="其他文档", position=0),
+        ]
+        context = read_context(chunks[1], chunks)
+        self.assertIn("第一段", context)
+        self.assertIn("第二段", context)
+        self.assertNotIn("其他文档", context)
 
 
 if __name__ == "__main__":
     unittest.main()
-

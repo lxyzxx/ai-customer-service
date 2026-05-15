@@ -83,13 +83,22 @@ class Storage:
         with self.connect() as db:
             rows = db.execute(
                 """
-                select c.id, c.document_id, d.title, c.content
+                select c.id, c.document_id, d.title, c.content, c.position
                 from chunks c
                 join documents d on d.id = c.document_id
                 order by c.id
                 """
             ).fetchall()
-        return [Chunk(id=row["id"], document_id=row["document_id"], title=row["title"], content=row["content"]) for row in rows]
+        return [
+            Chunk(
+                id=row["id"],
+                document_id=row["document_id"],
+                title=row["title"],
+                content=row["content"],
+                position=row["position"],
+            )
+            for row in rows
+        ]
 
     def add_message(self, session_id: str, role: str, content: str) -> None:
         with self.connect() as db:
@@ -116,4 +125,3 @@ class Storage:
         with self.connect() as db:
             count = db.execute("select count(*) as total from documents").fetchone()["total"]
         return count == 0
-

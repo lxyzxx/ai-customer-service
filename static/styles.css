@@ -96,6 +96,7 @@ h2 {
 
 .topbar p,
 .status,
+.route,
 .source,
 .empty {
   color: var(--muted);
@@ -138,6 +139,13 @@ h2 {
   margin-top: 12px;
   display: grid;
   gap: 8px;
+}
+
+.route {
+  margin-top: 12px;
+  border-left: 3px solid var(--brand);
+  padding-left: 10px;
+  white-space: normal;
 }
 
 .source {
@@ -245,4 +253,3 @@ textarea:focus {
     flex-direction: column;
   }
 }
-

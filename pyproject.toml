@@ -1,7 +1,7 @@
 [project]
 name = "ai-customer-service"
 version = "0.1.0"
-description = "Minimal RAG customer service demo with document ingestion, retrieval, chat, and source tracing."
+description = "Minimal agentic customer service demo with direct corpus retrieval, context checks, chat, and source tracing."
 requires-python = ">=3.11"
 dependencies = []
 
