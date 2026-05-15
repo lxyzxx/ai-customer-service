@@ -15,6 +15,11 @@ class ProblemLayerTest(unittest.TestCase):
         self.assertEqual(route.layer, GENERAL_CHAT)
         self.assertFalse(route.should_retrieve)
 
+    def test_help_question_uses_chatbot_layer(self) -> None:
+        route = classify_problem("你能做什么")
+        self.assertEqual(route.layer, GENERAL_CHAT)
+        self.assertEqual(route.handler, "chatbot")
+
     def test_escalation_uses_deterministic_rule(self) -> None:
         route = classify_problem("我要投诉并要求赔偿")
         self.assertEqual(route.layer, DETERMINISTIC_RULE)
@@ -33,4 +38,3 @@ class ProblemLayerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

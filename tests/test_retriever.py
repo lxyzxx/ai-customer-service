@@ -46,6 +46,16 @@ class RetrieverTest(unittest.TestCase):
         self.assertIn("第二段", context)
         self.assertNotIn("其他文档", context)
 
+    def test_retrieve_uses_vector_recall_as_auxiliary_channel(self) -> None:
+        chunks = [
+            Chunk(id=1, document_id=1, title="售后", content="商品存在质量问题可以申请售后换新。"),
+            Chunk(id=2, document_id=2, title="发票", content="企业可以申请增值税专用发票。"),
+        ]
+        hits = retrieve("东西坏了可以换吗", chunks, top_k=1)
+        self.assertEqual(hits[0].chunk.title, "售后")
+        self.assertIn("向量语义召回", hits[0].evidence)
+        self.assertNotIn("原文命中 `可以`", hits[0].evidence)
+
 
 if __name__ == "__main__":
     unittest.main()

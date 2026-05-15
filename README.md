@@ -9,8 +9,10 @@
 - 文档入库：支持粘贴 FAQ、产品说明、售后政策等文本
 - 文本切分：按段落优先，长文本使用滑动窗口
 - 问题分层：先判断问题应走寒暄、确定性规则、业务工具查询还是知识库证据检索
+- Chatbot 语义记忆：普通帮助类问题使用轻量向量召回匹配内置客服能力说明
 - 直接语料检索：从用户问题抽取精确线索，在原始知识库片段中搜索命中项
 - 弱线索补充：使用 TF-IDF 作为辅助召回，不把系统限制在单次语义 top-k
+- 向量辅助召回：在知识库证据层补充语义近似匹配，适合口语化和同义表达
 - 上下文核验：命中后读取同一文档相邻片段，避免只看孤立 chunk
 - Agentic RAG 问答：基于检索证据、原文上下文和会话历史构造回答
 - 来源追踪：回答下方展示命中文档、证据线索、相关度和上下文
@@ -93,9 +95,11 @@ Content-Type: application/json
 ```text
 ai-customer-service/
   app/
+    chatbot.py      # Chatbot 层：轻量向量语义记忆
     chunker.py      # 文本切分
     problem_layers.py # 问题分层：chatbot / rule_engine / tool_call / dci_retrieval
-    retriever.py    # DCI 风格检索：精确线索搜索 + TF-IDF 弱线索 + 上下文读取
+    retriever.py    # 证据检索：DCI 精确线索 + TF-IDF + vector recall + 上下文读取
+    vector_retriever.py # 零依赖 hash vector recall，可替换为 embedding/向量库
     llm.py          # 模型调用和 fallback
     rag.py          # RAG 编排
     storage.py      # SQLite 持久化
@@ -116,13 +120,14 @@ python3 -m unittest discover -s tests
 可以按这条链路讲：
 
 1. 用户上传知识库文档，系统将文本切分成 chunk。
-2. 用户提问时，系统先做问题分层：普通寒暄走 chatbot，高风险或人工诉求走规则，订单/物流/退款进度走业务工具，政策/FAQ 证据问题走 DCI 检索。
-3. 进入 DCI 检索后，系统从问题中抽取关键词、短语和数字等精确线索。
-4. 检索器直接扫描原始知识库 chunk，找出命中线索的文档片段，相当于在应用内提供 `grep/read_context` 能力。
-5. 对没有明显精确命中的情况，再用 TF-IDF 做弱线索补充，避免完全依赖关键词。
-6. 命中片段后读取同一文档的相邻 chunk，检查原文上下文。
-7. 模型只基于检索证据和上下文回答，并返回来源、证据线索和相关度。
-8. 会话 ID 绑定历史消息，支持多轮上下文扩展。
+2. 用户提问时，系统先做问题分层：普通寒暄和帮助问题走 chatbot，高风险或人工诉求走规则，订单/物流/退款进度走业务工具，政策/FAQ 证据问题走知识库检索。
+3. Chatbot 层使用轻量向量语义记忆匹配能力说明、使用方式和证据优先原则。
+4. 进入知识库证据层后，系统从问题中抽取关键词、短语和数字等精确线索。
+5. 检索器直接扫描原始知识库 chunk，找出命中线索的文档片段，相当于在应用内提供 `grep/read_context` 能力。
+6. 系统再融合 TF-IDF 弱线索和向量语义召回，补足口语化、同义表达和措辞差异。
+7. 命中片段后读取同一文档的相邻 chunk，检查原文上下文。
+8. 模型只基于检索证据和上下文回答，并返回来源、证据线索和相关度。
+9. 会话 ID 绑定历史消息，支持多轮上下文扩展。
 
 可主动说明当前取舍：
 
@@ -137,8 +142,8 @@ python3 -m unittest discover -s tests
 这个项目不把所有客服问题都塞进 RAG，而是先做路由：
 
 ```text
-普通寒暄
--> chatbot
+普通寒暄、能力说明、帮助
+-> chatbot + vector memory
 
 投诉、赔偿、账号安全、金额异常、明确要求人工
 -> rule_engine
@@ -147,10 +152,10 @@ python3 -m unittest discover -s tests
 -> tool_call
 
 退款政策、发票规则、物流异常处理、售后条款、FAQ
--> dci_retrieval
+-> dci_retrieval + tfidf + vector recall
 ```
 
-这对应真实客服系统的边界：确定性问题走规则，实时状态走业务 API，证据查找走 DCI，泛化表达再交给模型组织语言。
+这对应真实客服系统的边界：确定性问题走规则，实时状态走业务 API，泛化帮助走 chatbot 语义记忆，证据查找走 DCI + 向量辅助召回，最后再交给模型组织语言。
 
 ## 为什么不是纯向量检索
 
@@ -176,18 +181,19 @@ python3 -m unittest discover -s tests
 用户问题
 -> 抽取精确线索
 -> 搜索原始知识库
+-> 用 TF-IDF 弱线索补充
+-> 融合向量语义召回
 -> 读取命中片段的上下文
--> 用弱线索召回补充
 -> 基于证据回答并展示来源
 ```
 
-因此，本项目的定位是可审计的 Agentic 客服检索系统。向量召回可以加入，但它是工具之一，不是架构中心。
+因此，本项目的定位是可审计的 Agentic 客服检索系统。向量召回已经作为辅助通道接入 chatbot 和知识库证据层，但它是工具之一，不是架构中心。
 
 ## 后续路线
 
 - 后端替换为 FastAPI，增加 OpenAPI 文档和鉴权
 - 检索层增加 BM25 / SQLite FTS / Elasticsearch，提高大规模全文检索能力
-- 增加可选向量召回通道，与精确线索检索做融合排序
+- 将当前零依赖 hash vector recall 替换为 embedding 模型 + FAISS、Milvus 或 pgvector
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文
 - 增加检索轨迹面板，展示系统如何搜索、命中和核验证据
 - 文档解析支持 PDF、Word、网页和 Markdown 批量导入

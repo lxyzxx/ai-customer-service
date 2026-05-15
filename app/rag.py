@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.chatbot import answer_general_chat
 from app.config import settings
 from app.llm import LLMConfig, generate_answer
 from app.problem_layers import (
@@ -27,9 +28,10 @@ class RAGService:
         active_session_id = session_id or str(uuid4())
         history = self.storage.get_recent_messages(active_session_id)
         route = classify_problem(cleaned_question)
+        memories: list[dict[str, str | float]] = []
 
         if route.layer == GENERAL_CHAT:
-            answer = "你好，我是智能客服。你可以问我售后政策、退款规则、发票、物流异常或人工转接相关问题。"
+            answer, memories = answer_general_chat(cleaned_question)
             hits = []
         elif route.layer == DETERMINISTIC_RULE:
             answer = (
@@ -64,6 +66,7 @@ class RAGService:
             "session_id": active_session_id,
             "answer": answer,
             "route": route_to_dict(route),
+            "memories": memories,
             "sources": [
                 {
                     "chunk_id": hit.chunk.id,

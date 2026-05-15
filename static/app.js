@@ -9,7 +9,7 @@ const docContent = document.querySelector("#doc-content");
 
 let sessionId = localStorage.getItem("ai-customer-service-session-id") || "";
 
-function addMessage(role, content, sources = [], route = null) {
+function addMessage(role, content, sources = [], route = null, memories = []) {
   const item = document.createElement("article");
   item.className = `message ${role}`;
   item.textContent = content;
@@ -39,6 +39,20 @@ function addMessage(role, content, sources = [], route = null) {
       sourceList.appendChild(sourceItem);
     });
     item.appendChild(sourceList);
+  }
+
+  if (memories.length > 0) {
+    const memoryList = document.createElement("div");
+    memoryList.className = "sources";
+    memories.forEach((memory) => {
+      const memoryItem = document.createElement("div");
+      memoryItem.className = "source";
+      memoryItem.textContent =
+        `记忆：${memory.title}，证据：${memory.evidence}，` +
+        `相关度 ${memory.score}。${memory.content}`;
+      memoryList.appendChild(memoryItem);
+    });
+    item.appendChild(memoryList);
   }
 
   chat.appendChild(item);
@@ -100,7 +114,7 @@ chatForm.addEventListener("submit", async (event) => {
     sessionId = data.session_id;
     localStorage.setItem("ai-customer-service-session-id", sessionId);
     chat.lastElementChild.remove();
-    addMessage("assistant", data.answer, data.sources, data.route);
+    addMessage("assistant", data.answer, data.sources, data.route, data.memories);
   } catch (error) {
     chat.lastElementChild.remove();
     addMessage("assistant", `请求失败：${error.message}`);

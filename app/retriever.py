@@ -5,6 +5,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
+from app.vector_retriever import vector_scores
+
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]")
 STOPWORDS = {
@@ -28,6 +30,17 @@ STOPWORDS = {
     "呢",
     "我",
     "你",
+}
+NOISE_EVIDENCE_TERMS = {
+    "一下",
+    "可以",
+    "这个",
+    "那个",
+    "东西",
+    "怎么",
+    "怎么办",
+    "需要",
+    "能不能",
 }
 
 
@@ -94,7 +107,11 @@ def _matched_clues(clue: str, text: str) -> list[str]:
     text_lower = text.lower()
     if clue_lower in text_lower:
         return [clue]
-    return _common_chinese_spans(clue, text_lower)
+    return [
+        span
+        for span in _common_chinese_spans(clue, text_lower)
+        if span not in NOISE_EVIDENCE_TERMS
+    ]
 
 
 def search_corpus(
@@ -182,17 +199,24 @@ def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[RetrievalH
 
     clues = extract_clues(query)
     exact_matches = search_corpus(clues, chunks)
+    semantic_scores = vector_scores(
+        query,
+        [(chunk.id, f"{chunk.title}\n{chunk.content}") for chunk in chunks],
+    )
     query_tf, doc_tfs, idf = _tfidf_vectors(query, chunks)
     hits: list[RetrievalHit] = []
     for chunk, doc_tf in zip(chunks, doc_tfs, strict=True):
         lexical_score, evidence = exact_matches.get(chunk.id, (0.0, ()))
         tfidf_score = _cosine(query_tf, doc_tf, idf)
-        if lexical_score == 0.0 and tfidf_score == 0.0:
+        semantic_score = semantic_scores.get(chunk.id, 0.0)
+        if lexical_score == 0.0 and tfidf_score == 0.0 and semantic_score < 0.08:
             continue
 
-        combined_score = lexical_score + tfidf_score
+        combined_score = lexical_score + tfidf_score + semantic_score * 1.2
         if tfidf_score > 0.0:
             evidence = (*evidence, "TF-IDF 弱线索召回")
+        if semantic_score >= 0.08:
+            evidence = (*evidence, "向量语义召回")
         evidence = evidence[:8]
         hits.append(
             RetrievalHit(

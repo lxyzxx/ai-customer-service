@@ -20,6 +20,7 @@ class ProblemRoute:
 
 GENERAL_PATTERNS = [
     re.compile(r"^(你好|您好|hello|hi|谢谢|感谢|再见|拜拜)[！!。.\s]*$", re.IGNORECASE),
+    re.compile(r"(你是谁|你能做什么|怎么用|如何使用|帮助|功能|介绍一下)"),
 ]
 
 ESCALATION_TERMS = [
@@ -49,7 +50,7 @@ def classify_problem(question: str) -> ProblemRoute:
         return ProblemRoute(
             layer=GENERAL_CHAT,
             handler="chatbot",
-            reason="普通寒暄，不需要查知识库或业务系统",
+            reason="普通寒暄或帮助类问题，使用 chatbot 语义记忆",
             should_retrieve=False,
         )
 
@@ -87,4 +88,3 @@ def route_to_dict(route: ProblemRoute) -> dict[str, str | bool]:
         "reason": route.reason,
         "should_retrieve": route.should_retrieve,
     }
-
