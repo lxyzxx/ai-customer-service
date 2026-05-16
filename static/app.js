@@ -7,7 +7,7 @@ const docForm = document.querySelector("#doc-form");
 const docTitle = document.querySelector("#doc-title");
 const docContent = document.querySelector("#doc-content");
 
-let sessionId = localStorage.getItem("ai-qa-bot-session-id") || "";
+let sessionId = localStorage.getItem("internal-qa-bot-session-id") || "";
 
 function addMessage(role, content, sources = [], route = null, chatbotKnowledge = []) {
   const item = document.createElement("article");
@@ -112,7 +112,7 @@ chatForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ question, session_id: sessionId || undefined }),
     });
     sessionId = data.session_id;
-    localStorage.setItem("ai-qa-bot-session-id", sessionId);
+    localStorage.setItem("internal-qa-bot-session-id", sessionId);
     chat.lastElementChild.remove();
     const chatbotKnowledge = data.chatbot_knowledge || [];
     addMessage("assistant", data.answer, data.sources, data.route, chatbotKnowledge);

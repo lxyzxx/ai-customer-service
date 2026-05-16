@@ -1,4 +1,4 @@
-# AI 问答机器人
+# Internal QA Bot
 
 这是一个面向公司内部落地的知识问答机器人。系统先判断问题应该走普通对话、确定性规则、业务系统查询还是知识库证据检索，再把请求交给对应的处理链路。
 
@@ -17,12 +17,13 @@
 - Agentic RAG 问答：基于检索证据、原文上下文和会话历史构造回答
 - 来源追踪：回答下方展示命中文档、证据线索、相关度和上下文
 - 会话记录：SQLite 保存多轮对话
-- 模型适配：配置 `OPENAI_API_KEY` 后可调用 OpenAI-compatible Chat Completions 接口；未配置时返回检索摘要
+- 模型适配：通过 OpenAI Python SDK 调用 OpenAI-compatible Chat Completions 接口；未配置 `OPENAI_API_KEY` 时返回检索摘要
 
 ## 快速开始
 
 ```bash
-cd ai-customer-service
+cd internal-qa-bot
+python3 -m pip install -e .
 python3 -m app.server
 ```
 
@@ -44,13 +45,13 @@ cp .env.example .env
 
 根据你使用的模型服务设置：
 
-```bash
-export OPENAI_API_KEY="你的 API Key"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-export OPENAI_MODEL="gpt-4o-mini"
+```env
+OPENAI_API_KEY=你的 API Key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-如果使用其他兼容 OpenAI Chat Completions 的服务，只需要修改 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。
+启动时会自动读取项目根目录下的 `.env`。真实 `.env` 已被 `.gitignore` 忽略，不要提交到 GitHub；提交 `.env.example` 即可。系统通过 OpenAI Python SDK 发起请求。如果使用其他兼容 OpenAI Chat Completions 的服务，只需要修改 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。
 
 ## API
 
@@ -93,7 +94,7 @@ Content-Type: application/json
 ## 项目结构
 
 ```text
-ai-customer-service/
+internal-qa-bot/
   app/
     chatbot.py      # Chatbot 层：轻量向量召回内置说明
     chunker.py      # 文本切分

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 from app.retriever import RetrievalHit
 
@@ -51,22 +50,27 @@ def generate_answer(
         "messages": build_prompt(question, hits, history),
         "temperature": 0.2,
     }
-    request = urllib.request.Request(
-        url=f"{config.base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {config.api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
-        return f"模型服务暂时不可用，已返回检索结果摘要。\n\n{_fallback_answer(question, hits)}\n\n错误信息: {exc}"
+        result = _create_chat_completion(config, payload)
+    except Exception as exc:
+        fallback = _fallback_answer(question, hits)
+        return f"模型服务暂时不可用，已返回检索结果摘要。\n\n{fallback}\n\n错误信息: {exc}"
 
     return result["choices"][0]["message"]["content"].strip()
+
+
+def _create_chat_completion(config: LLMConfig, payload: dict[str, Any]) -> dict[str, Any]:
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=config.api_key,
+        base_url=config.base_url.rstrip("/"),
+        timeout=30,
+    )
+    response = client.chat.completions.create(**payload)
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return json.loads(response.model_dump_json())
 
 
 def _fallback_answer(question: str, hits: list[RetrievalHit]) -> str:
