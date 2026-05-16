@@ -27,7 +27,11 @@ class QdrantVectorIndex:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.qdrant_config.url and self.embedding_config.api_key)
+        if not self.qdrant_config.url:
+            return False
+        if self.embedding_config.provider == "local":
+            return bool(self.embedding_config.model)
+        return bool(self.embedding_config.api_key)
 
     def upsert_chunks(self, chunks: list[Chunk]) -> None:
         if not self.enabled or not chunks:

@@ -70,9 +70,10 @@ Qdrant 是可选增强，不配置时系统仍会使用 SQLite FTS5/BM25、TF-ID
 docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
 ```
 
-在 `.env` 中配置 embedding 和 Qdrant：
+如果使用远程 OpenAI-compatible embedding，在 `.env` 中配置：
 
 ```env
+EMBEDDING_PROVIDER=openai
 EMBEDDING_API_KEY=你的 embedding API Key
 EMBEDDING_BASE_URL=https://api.openai.com/v1
 EMBEDDING_MODEL=text-embedding-3-small
@@ -81,6 +82,32 @@ EMBEDDING_DIMENSIONS=1536
 QDRANT_URL=http://127.0.0.1:6333
 QDRANT_API_KEY=
 QDRANT_COLLECTION=internal_qa_chunks
+```
+
+如果使用本地 sentence-transformers embedding，例如 `BAAI/bge-m3`：
+
+```bash
+python3 -m pip install -e ".[local-embedding]"
+```
+
+```env
+OPENAI_API_KEY=你的 DeepSeek API Key
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-chat
+
+EMBEDDING_PROVIDER=local
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_DIMENSIONS=1024
+
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=
+QDRANT_COLLECTION=internal_qa_chunks
+```
+
+`BAAI/bge-m3` 首次启动会下载模型；如果之前用 1536 维 embedding 建过 Qdrant collection，需要删除后用 1024 维重建：
+
+```bash
+curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
 ```
 
 SQLite 继续保存文档、chunk 原文和聊天记录；Qdrant 只保存 chunk embedding、`chunk_id`、`document_id`、标题和位置等 metadata。新增文档时，系统会先写 SQLite，再尽力同步 Qdrant；如果 Qdrant 不可用，文档入库不会失败，只会在响应中标记向量索引未完成。

@@ -37,6 +37,7 @@ class Settings:
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.embedding_provider = os.getenv("EMBEDDING_PROVIDER", "openai")
         self.embedding_api_key = os.getenv("EMBEDDING_API_KEY", "")
         self.embedding_base_url = os.getenv("EMBEDDING_BASE_URL", "https://api.openai.com/v1")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")

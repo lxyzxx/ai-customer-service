@@ -26,6 +26,7 @@ vector_index = QdrantVectorIndex(
         dimensions=settings.embedding_dimensions,
     ),
     EmbeddingConfig(
+        provider=settings.embedding_provider,
         api_key=settings.embedding_api_key,
         base_url=settings.embedding_base_url,
         model=settings.embedding_model,
