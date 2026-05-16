@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.rag import RAGService
+from app.qdrant_index import NullVectorIndex
 from app.server import create_app
 from app.storage import Storage
 
@@ -84,7 +85,8 @@ class ServerTest(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         storage = Storage(Path(temp_dir.name) / "app.db")
-        return create_app(storage, RAGService(storage))
+        vector_index = NullVectorIndex()
+        return create_app(storage, RAGService(storage, vector_index), vector_index)
 
     def test_health_endpoint(self) -> None:
         status, _, body = asyncio.run(request(self.make_app(), "GET", "/api/health"))

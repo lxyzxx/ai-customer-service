@@ -42,7 +42,7 @@ FastAPI 会自动提供接口文档：
 http://127.0.0.1:8000/docs
 ```
 
-## 配置模型
+## 配置聊天模型
 
 复制环境变量模板：
 
@@ -60,9 +60,17 @@ OPENAI_MODEL=gpt-4o-mini
 
 启动时会自动读取项目根目录下的 `.env`。真实 `.env` 已被 `.gitignore` 忽略，不要提交到 GitHub；提交 `.env.example` 即可。系统通过 OpenAI Python SDK 发起请求。如果使用其他兼容 OpenAI Chat Completions 的服务，只需要修改 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。
 
+DeepSeek 聊天模型示例：
+
+```env
+OPENAI_API_KEY=你的 DeepSeek API Key
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-chat
+```
+
 ## 配置 Qdrant 向量检索
 
-Qdrant 是可选增强，不配置时系统仍会使用 SQLite FTS5/BM25、TF-IDF 和轻量 hash vector recall。
+Qdrant 是可选增强，不配置时系统仍会使用 SQLite FTS5/BM25、TF-IDF 和轻量 hash vector recall。配置后，Qdrant 负责 embedding 向量相似度检索，SQLite 仍然是文档和 chunk 原文的主存储。
 
 启动本地 Qdrant：
 
@@ -112,6 +120,51 @@ curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
 
 SQLite 继续保存文档、chunk 原文和聊天记录；Qdrant 只保存 chunk embedding、`chunk_id`、`document_id`、标题和位置等 metadata。新增文档时，系统会先写 SQLite，再尽力同步 Qdrant；如果 Qdrant 不可用，文档入库不会失败，只会在响应中标记向量索引未完成。
 
+### 验证 Qdrant
+
+确认服务在线：
+
+```bash
+curl http://127.0.0.1:6333/collections
+```
+
+新增文档后，接口响应中应该出现：
+
+```json
+{
+  "vector_indexed": true,
+  "vector_index_status": "ok"
+}
+```
+
+查看 Qdrant collection：
+
+```bash
+curl http://127.0.0.1:6333/collections/internal_qa_chunks
+```
+
+查看写入的 points：
+
+```bash
+curl -s -X POST http://127.0.0.1:6333/collections/internal_qa_chunks/points/scroll \
+  -H "Content-Type: application/json" \
+  -d '{"limit":5,"with_payload":true,"with_vectors":false}'
+```
+
+问答时，如果 Qdrant 参与召回，`retrieval_trace` 会包含：
+
+```json
+{
+  "name": "qdrant",
+  "label": "Qdrant embedding 向量召回",
+  "matched_sources": 1
+}
+```
+
+`sources[].evidence` 也会出现 `Qdrant 向量召回`。
+
+注意：只有配置 Qdrant 后新增的文档会自动写入 Qdrant。已有 SQLite 文档需要重新添加，或等后续向量索引重建接口批量同步。
+
 ## API
 
 ### 健康检查
@@ -150,6 +203,30 @@ Content-Type: application/json
 }
 ```
 
+响应会包含：
+
+```json
+{
+  "answer": "基于证据生成的回答",
+  "route": {
+    "layer": "knowledge_evidence",
+    "handler": "dci_retrieval"
+  },
+  "retrieval_trace": [
+    {"name": "keyword", "label": "原文关键词命中", "matched_sources": 1},
+    {"name": "bm25", "label": "SQLite FTS5/BM25 全文召回", "matched_sources": 1},
+    {"name": "qdrant", "label": "Qdrant embedding 向量召回", "matched_sources": 1},
+    {"name": "context", "label": "相邻 chunk 上下文核验", "matched_sources": 1}
+  ],
+  "sources": [
+    {
+      "title": "会议室预约制度",
+      "evidence": ["原文命中 `会议室预约`", "Qdrant 向量召回"]
+    }
+  ]
+}
+```
+
 ## 项目结构
 
 ```text
@@ -160,7 +237,7 @@ internal-qa-bot/
     problem_layers.py # 问题分层：chatbot / rule_engine / tool_call / dci_retrieval
     retriever.py    # 证据检索：DCI 精确线索 + FTS/BM25 + TF-IDF + vector recall + 上下文读取
     vector_retriever.py # 零依赖 hash vector recall，可替换为 embedding/向量库
-    embedding.py    # OpenAI-compatible embedding 调用
+    embedding.py    # OpenAI-compatible / local sentence-transformers embedding
     qdrant_index.py # Qdrant 向量索引适配
     llm.py          # 模型调用和 fallback
     rag.py          # RAG 编排
@@ -189,6 +266,26 @@ python3 -m unittest discover -s tests
 8. 模型只基于检索证据和上下文回答，并返回来源、证据线索和相关度。
 9. 会话 ID 绑定历史消息，支持多轮上下文扩展。
 
+## 存储分工
+
+SQLite 是主数据源：
+
+```text
+documents   原始文档
+chunks      切分后的文本片段
+chunks_fts  SQLite FTS5 全文索引，用于 BM25
+messages    多轮会话记录
+```
+
+Qdrant 是可选向量索引：
+
+```text
+vector      chunk embedding
+payload     chunk_id / document_id / title / position
+```
+
+检索时，Qdrant 返回 `chunk_id`，系统再回 SQLite 读取 chunk 原文和相邻上下文。这样 Qdrant 不承担主数据库职责，只负责语义相似度召回。
+
 ## 检索设计
 
 - 系统优先保证可控召回和证据链，而不是只依赖 embedding + 向量数据库。
@@ -196,6 +293,48 @@ python3 -m unittest discover -s tests
 - 单次 top-k 相似度召回如果漏掉关键条款，后面的模型很难补救；所以这里采用直接语料交互，让系统能先搜原文、再读上下文、最后回答。
 - embedding + 向量数据库适合作为辅助召回通道，但不作为唯一检索接口。
 - 当前模型调用走 OpenAI-compatible 协议，方便切换不同供应商。
+
+当前混合检索通道：
+
+```text
+keyword       原文精确线索命中
+bm25          SQLite FTS5/BM25 全文召回
+tfidf         Python TF-IDF 弱线索召回
+qdrant        embedding 向量召回，可选
+vector        轻量 hash vector fallback
+context       同文档相邻 chunk 上下文核验
+```
+
+## Embedding Provider
+
+项目支持两种 embedding provider：
+
+```text
+openai  调用 OpenAI-compatible /v1/embeddings 接口
+local   使用 sentence-transformers 本地模型
+```
+
+`openai` 适合使用 OpenAI、兼容 OpenAI embeddings 的云服务。`local` 适合 DeepSeek 只做聊天、本地用 `BAAI/bge-m3` 做向量。
+
+本地 embedding 默认不安装，避免普通安装拉取 PyTorch 等大依赖。需要时执行：
+
+```bash
+python3 -m pip install -e ".[local-embedding]"
+```
+
+`BAAI/bge-m3` dense embedding 维度是 1024，所以 `.env` 中要设置：
+
+```env
+EMBEDDING_PROVIDER=local
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_DIMENSIONS=1024
+```
+
+如果切换过不同 embedding 维度，需要删除旧 Qdrant collection 后重新入库：
+
+```bash
+curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
+```
 
 ## 问题分层设计
 
