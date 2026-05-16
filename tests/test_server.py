@@ -10,6 +10,22 @@ from app.server import create_app
 from app.storage import Storage
 
 
+class RecordingVectorIndex:
+    enabled = True
+
+    def __init__(self) -> None:
+        self.upserted_titles: list[str] = []
+
+    def upsert_chunks(self, chunks) -> None:
+        self.upserted_titles.extend(chunk.title for chunk in chunks)
+
+    def delete_document(self, document_id: int) -> None:
+        return
+
+    def search(self, query: str, limit: int = 8) -> dict:
+        return {}
+
+
 async def request(
     app,
     method: str,
@@ -94,6 +110,26 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(
             any(doc["title"] == "会议室预约制度" for doc in json.loads(list_body)["documents"])
         )
+
+    def test_document_endpoint_syncs_vector_index(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        vector_index = RecordingVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index)
+
+        status, _, body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents",
+                {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"},
+            )
+        )
+
+        self.assertEqual(status, 201)
+        self.assertTrue(json.loads(body)["vector_indexed"])
+        self.assertEqual(vector_index.upserted_titles, ["会议室预约制度"])
 
     def test_chat_endpoint(self) -> None:
         with patch("app.rag.generate_chat_answer", return_value="你好"):

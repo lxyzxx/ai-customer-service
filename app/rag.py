@@ -12,13 +12,15 @@ from app.problem_layers import (
     classify_problem,
     route_to_dict,
 )
-from app.retriever import RetrievalHit, retrieve
+from app.qdrant_index import NullVectorIndex
+from app.retriever import ExternalRetrievalScore, RetrievalHit, retrieve
 from app.storage import Storage
 
 
 class RAGService:
-    def __init__(self, storage: Storage) -> None:
+    def __init__(self, storage: Storage, vector_index: NullVectorIndex | None = None) -> None:
         self.storage = storage
+        self.vector_index = vector_index or NullVectorIndex()
 
     def answer(self, question: str, session_id: str | None = None) -> dict:
         cleaned_question = question.strip()
@@ -55,11 +57,18 @@ class RAGService:
         else:
             chunks = self.storage.list_chunks()
             fts_scores = self.storage.search_chunks_fts(cleaned_question, limit=settings.top_k * 3)
+            try:
+                qdrant_scores = self.vector_index.search(
+                    cleaned_question,
+                    limit=settings.top_k * 3,
+                )
+            except Exception:
+                qdrant_scores = {}
             hits = retrieve(
                 cleaned_question,
                 chunks,
                 top_k=settings.top_k,
-                external_scores=fts_scores,
+                external_scores=merge_external_scores(fts_scores, qdrant_scores),
             )
 
             answer = generate_answer(
@@ -100,6 +109,7 @@ def build_retrieval_trace(hits: list[RetrievalHit]) -> list[dict[str, str | int]
     channels = [
         ("keyword", "原文关键词命中", "原文命中"),
         ("bm25", "SQLite FTS5/BM25 全文召回", "SQLite FTS5/BM25 召回"),
+        ("qdrant", "Qdrant embedding 向量召回", "Qdrant 向量召回"),
         ("tfidf", "TF-IDF 弱线索召回", "TF-IDF 弱线索召回"),
         ("vector", "向量语义召回", "向量语义召回"),
     ]
@@ -122,3 +132,21 @@ def build_retrieval_trace(hits: list[RetrievalHit]) -> list[dict[str, str | int]
             }
         )
     return trace
+
+
+def merge_external_scores(
+    *score_maps: dict[int, ExternalRetrievalScore],
+) -> dict[int, ExternalRetrievalScore]:
+    merged: dict[int, ExternalRetrievalScore] = {}
+    for score_map in score_maps:
+        for chunk_id, score in score_map.items():
+            current = merged.get(chunk_id, ExternalRetrievalScore(0.0))
+            evidence = current.evidence
+            for reason in score.evidence:
+                if reason not in evidence:
+                    evidence = (*evidence, reason)
+            merged[chunk_id] = ExternalRetrievalScore(
+                score=current.score + score.score,
+                evidence=evidence,
+            )
+    return merged

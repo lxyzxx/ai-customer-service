@@ -11,12 +11,28 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import STATIC_DIR, settings
+from app.embedding import EmbeddingConfig
+from app.qdrant_index import NullVectorIndex, QdrantConfig, QdrantVectorIndex
 from app.rag import RAGService
 from app.storage import Storage
 
 
 storage = Storage(settings.database_path)
-rag_service = RAGService(storage)
+vector_index = QdrantVectorIndex(
+    QdrantConfig(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key,
+        collection=settings.qdrant_collection,
+        dimensions=settings.embedding_dimensions,
+    ),
+    EmbeddingConfig(
+        api_key=settings.embedding_api_key,
+        base_url=settings.embedding_base_url,
+        model=settings.embedding_model,
+        dimensions=settings.embedding_dimensions,
+    ),
+)
+rag_service = RAGService(storage, vector_index)
 
 
 class DocumentRequest(BaseModel):
@@ -29,30 +45,65 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
-def seed_sample_data(storage_instance: Storage = storage) -> None:
+def seed_sample_data(
+    storage_instance: Storage = storage,
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex = vector_index,
+) -> None:
     sample_path = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "sample_faq.md"
     if not sample_path.exists():
         return
 
     documents = storage_instance.list_documents()
     if storage_instance.is_empty():
-        storage_instance.add_document("示例内部问答 FAQ", sample_path.read_text(encoding="utf-8"))
+        result = storage_instance.add_document(
+            "示例内部问答 FAQ",
+            sample_path.read_text(encoding="utf-8"),
+        )
+        sync_vector_index(vector_index_instance, storage_instance, int(result["id"]))
         return
 
     for document in documents:
         if document["title"] == "示例客服 FAQ":
+            try:
+                vector_index_instance.delete_document(int(document["id"]))
+            except Exception:
+                pass
             storage_instance.delete_document(int(document["id"]))
-            storage_instance.add_document("示例内部问答 FAQ", sample_path.read_text(encoding="utf-8"))
+            result = storage_instance.add_document(
+                "示例内部问答 FAQ",
+                sample_path.read_text(encoding="utf-8"),
+            )
+            sync_vector_index(vector_index_instance, storage_instance, int(result["id"]))
             return
+
+
+def sync_vector_index(
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex,
+    storage_instance: Storage,
+    document_id: int,
+) -> dict[str, Any]:
+    if not vector_index_instance.enabled:
+        return {"vector_indexed": False, "vector_index_status": "disabled"}
+
+    try:
+        vector_index_instance.upsert_chunks(storage_instance.list_chunks(document_id))
+    except Exception as exc:
+        return {
+            "vector_indexed": False,
+            "vector_index_status": "failed",
+            "vector_index_error": str(exc),
+        }
+    return {"vector_indexed": True, "vector_index_status": "ok"}
 
 
 def create_app(
     storage_instance: Storage = storage,
     rag_service_instance: RAGService = rag_service,
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex = vector_index,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        seed_sample_data(storage_instance)
+        seed_sample_data(storage_instance, vector_index_instance)
         yield
 
     api = FastAPI(
@@ -78,7 +129,11 @@ def create_app(
     @api.post("/api/documents", status_code=201)
     async def add_document(payload: DocumentRequest) -> dict[str, Any]:
         try:
-            return storage_instance.add_document(payload.title, payload.content)
+            result = storage_instance.add_document(payload.title, payload.content)
+            return {
+                **result,
+                **sync_vector_index(vector_index_instance, storage_instance, int(result["id"])),
+            }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

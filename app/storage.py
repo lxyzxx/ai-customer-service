@@ -153,15 +153,22 @@ class Storage:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def list_chunks(self) -> list[Chunk]:
+    def list_chunks(self, document_id: int | None = None) -> list[Chunk]:
         with self.connect() as db:
+            params: tuple[Any, ...] = ()
+            where_clause = ""
+            if document_id is not None:
+                where_clause = "where c.document_id = ?"
+                params = (document_id,)
             rows = db.execute(
-                """
+                f"""
                 select c.id, c.document_id, d.title, c.content, c.position
                 from chunks c
                 join documents d on d.id = c.document_id
+                {where_clause}
                 order by c.id
-                """
+                """,
+                params,
             ).fetchall()
         return [
             Chunk(

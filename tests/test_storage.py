@@ -30,6 +30,17 @@ class StorageTest(unittest.TestCase):
 
             self.assertEqual(storage.search_chunks_fts("会议室预约"), {})
 
+    def test_list_chunks_can_filter_by_document_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = Storage(Path(temp_dir) / "app.db")
+            first = storage.add_document("会议室预约制度", "会议室预约需要提前 1 个工作日。")
+            storage.add_document("请假制度", "员工请年假需要提前在 OA 系统提交申请。")
+
+            chunks = storage.list_chunks(int(first["id"]))
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].title, "会议室预约制度")
+
 
 if __name__ == "__main__":
     unittest.main()

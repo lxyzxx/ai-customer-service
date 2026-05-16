@@ -2,7 +2,7 @@
 
 这是一个面向公司内部落地的知识问答机器人。系统先判断问题应该走普通对话、确定性规则、业务系统查询还是知识库证据检索，再把请求交给对应的处理链路。
 
-知识库检索采用 Agentic RAG / Direct Corpus Interaction 风格：先搜索原始语料和精确线索，再融合 SQLite FTS5/BM25、TF-IDF 与向量语义召回，最后读取原文上下文并基于证据回答。
+知识库检索采用 Agentic RAG / Direct Corpus Interaction 风格：先搜索原始语料和精确线索，再融合 SQLite FTS5/BM25、TF-IDF、轻量向量召回和可选 Qdrant embedding 向量召回，最后读取原文上下文并基于证据回答。
 
 ## 功能
 
@@ -13,7 +13,7 @@
 - 直接语料检索：从用户问题抽取精确线索，在原始知识库片段中搜索命中项
 - SQLite FTS5/BM25：文档入库时同步维护全文索引，作为关键词检索和弱排序通道
 - 弱线索补充：使用 TF-IDF 作为辅助召回，不把系统限制在单次语义 top-k
-- 向量辅助召回：在知识库证据层补充语义近似匹配，适合口语化和同义表达
+- 向量辅助召回：可选接入 Qdrant + embedding 做真实向量检索；未配置时使用轻量 hash vector recall 兜底
 - 上下文核验：命中后读取同一文档相邻片段，避免只看孤立 chunk
 - Agentic RAG 问答：基于检索证据、原文上下文和会话历史构造回答
 - 来源追踪：回答下方展示检索轨迹、命中文档、证据线索、相关度和上下文
@@ -59,6 +59,31 @@ OPENAI_MODEL=gpt-4o-mini
 ```
 
 启动时会自动读取项目根目录下的 `.env`。真实 `.env` 已被 `.gitignore` 忽略，不要提交到 GitHub；提交 `.env.example` 即可。系统通过 OpenAI Python SDK 发起请求。如果使用其他兼容 OpenAI Chat Completions 的服务，只需要修改 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。
+
+## 配置 Qdrant 向量检索
+
+Qdrant 是可选增强，不配置时系统仍会使用 SQLite FTS5/BM25、TF-IDF 和轻量 hash vector recall。
+
+启动本地 Qdrant：
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+```
+
+在 `.env` 中配置 embedding 和 Qdrant：
+
+```env
+EMBEDDING_API_KEY=你的 embedding API Key
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=
+QDRANT_COLLECTION=internal_qa_chunks
+```
+
+SQLite 继续保存文档、chunk 原文和聊天记录；Qdrant 只保存 chunk embedding、`chunk_id`、`document_id`、标题和位置等 metadata。新增文档时，系统会先写 SQLite，再尽力同步 Qdrant；如果 Qdrant 不可用，文档入库不会失败，只会在响应中标记向量索引未完成。
 
 ## API
 
@@ -108,6 +133,8 @@ internal-qa-bot/
     problem_layers.py # 问题分层：chatbot / rule_engine / tool_call / dci_retrieval
     retriever.py    # 证据检索：DCI 精确线索 + FTS/BM25 + TF-IDF + vector recall + 上下文读取
     vector_retriever.py # 零依赖 hash vector recall，可替换为 embedding/向量库
+    embedding.py    # OpenAI-compatible embedding 调用
+    qdrant_index.py # Qdrant 向量索引适配
     llm.py          # 模型调用和 fallback
     rag.py          # RAG 编排
     storage.py      # SQLite 持久化
@@ -130,7 +157,7 @@ python3 -m unittest discover -s tests
 3. 普通聊天层优先使用模型回答；模型不可用时，使用轻量向量召回匹配能力说明、使用方式和证据优先原则。
 4. 进入知识库证据层后，系统从问题中抽取关键词、短语和数字等精确线索。
 5. 检索器直接扫描原始知识库 chunk，找出命中线索的文档片段，相当于在应用内提供 `grep/read_context` 能力。
-6. 系统再融合 SQLite FTS5/BM25、TF-IDF 弱线索和向量语义召回，补足口语化、同义表达和措辞差异。
+6. 系统再融合 SQLite FTS5/BM25、TF-IDF 弱线索、Qdrant embedding 向量召回和轻量向量语义召回，补足口语化、同义表达和措辞差异。
 7. 命中片段后读取同一文档的相邻 chunk，检查原文上下文。
 8. 模型只基于检索证据和上下文回答，并返回来源、证据线索和相关度。
 9. 会话 ID 绑定历史消息，支持多轮上下文扩展。
@@ -158,7 +185,7 @@ python3 -m unittest discover -s tests
 -> tool_call
 
 明确命中制度说明、流程规范、系统操作手册、FAQ、报销材料、请假制度、权限/VPN 申请
--> dci_retrieval + sqlite fts/bm25 + tfidf + vector recall
+-> dci_retrieval + sqlite fts/bm25 + tfidf + qdrant vector + lightweight vector recall
 
 其他未命中问题
 -> llm_chat
@@ -191,7 +218,7 @@ python3 -m unittest discover -s tests
 -> 抽取精确线索
 -> 搜索原始知识库
 -> 用 SQLite FTS5/BM25 和 TF-IDF 弱线索补充
--> 融合向量语义召回
+-> 融合 Qdrant embedding 向量召回和轻量向量语义召回
 -> 读取命中片段的上下文
 -> 基于证据回答并展示来源
 ```
@@ -201,8 +228,7 @@ python3 -m unittest discover -s tests
 ## 后续路线
 
 - 增加鉴权、用户权限和管理端接口
-- 将当前零依赖 hash vector recall 替换为 embedding 模型 + Qdrant、FAISS 或 pgvector
-- 增加 Qdrant 向量库，把 chunk 原文继续放 SQLite，把 embedding 向量和 metadata 放 Qdrant
+- 增加向量索引重建接口，用于批量重算 embedding 并同步 Qdrant
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文
 - 增加检索轨迹面板，展示系统如何搜索、命中和核验证据
 - 文档解析支持 PDF、Word、网页和 Markdown 批量导入
