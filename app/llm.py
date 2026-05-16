@@ -59,6 +59,40 @@ def generate_answer(
     return result["choices"][0]["message"]["content"].strip()
 
 
+def build_chat_prompt(question: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
+    recent_history = "\n".join(f"{item['role']}: {item['content']}" for item in history[-6:])
+    system = (
+        "你是公司内部问答机器人的普通聊天层。"
+        "可以回答寒暄、使用说明、通用知识和轻量写作类问题。"
+        "如果问题需要实时外部数据，例如天气、股价、新闻或交通状态，"
+        "请说明当前系统没有接入实时外部工具，不能保证实时准确。"
+        "不要编造实时数据。"
+    )
+    user = f"历史对话:\n{recent_history or '无'}\n\n用户问题:\n{question}"
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def generate_chat_answer(
+    config: LLMConfig,
+    question: str,
+    history: list[dict[str, str]],
+) -> str | None:
+    if not config.api_key:
+        return None
+
+    payload = {
+        "model": config.model,
+        "messages": build_chat_prompt(question, history),
+        "temperature": 0.4,
+    }
+    try:
+        result = _create_chat_completion(config, payload)
+    except Exception:
+        return None
+
+    return result["choices"][0]["message"]["content"].strip()
+
+
 def _create_chat_completion(config: LLMConfig, payload: dict[str, Any]) -> dict[str, Any]:
     from openai import OpenAI
 

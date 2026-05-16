@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from app.chatbot import answer_general_chat
 from app.config import settings
-from app.llm import LLMConfig, generate_answer
+from app.llm import LLMConfig, generate_answer, generate_chat_answer
 from app.problem_layers import (
     BUSINESS_TOOL,
     DETERMINISTIC_RULE,
@@ -29,9 +29,16 @@ class RAGService:
         history = self.storage.get_recent_messages(active_session_id)
         route = classify_problem(cleaned_question)
         chatbot_knowledge: list[dict[str, str | float]] = []
+        llm_config = LLMConfig(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=settings.openai_model,
+        )
 
         if route.layer == GENERAL_CHAT:
-            answer, chatbot_knowledge = answer_general_chat(cleaned_question)
+            answer = generate_chat_answer(llm_config, cleaned_question, history)
+            if answer is None:
+                answer, chatbot_knowledge = answer_general_chat(cleaned_question)
             hits = []
         elif route.layer == DETERMINISTIC_RULE:
             answer = (
@@ -49,11 +56,7 @@ class RAGService:
             hits = retrieve(cleaned_question, self.storage.list_chunks(), top_k=settings.top_k)
 
             answer = generate_answer(
-                LLMConfig(
-                    api_key=settings.openai_api_key,
-                    base_url=settings.openai_base_url,
-                    model=settings.openai_model,
-                ),
+                llm_config,
                 cleaned_question,
                 hits,
                 history,

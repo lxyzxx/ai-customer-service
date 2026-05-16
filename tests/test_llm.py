@@ -3,7 +3,7 @@ import types
 import unittest
 from typing import Any
 
-from app.llm import LLMConfig, generate_answer
+from app.llm import LLMConfig, generate_answer, generate_chat_answer
 from app.retriever import Chunk, RetrievalHit
 
 
@@ -99,6 +99,53 @@ class LLMTest(unittest.TestCase):
         self.assertEqual(calls["payload"]["model"], "gpt-test")
         self.assertEqual(calls["payload"]["temperature"], 0.2)
         self.assertEqual(calls["payload"]["messages"][0]["role"], "system")
+
+    def test_generate_chat_answer_uses_openai_sdk_without_retrieval_context(self) -> None:
+        calls: dict[str, Any] = {}
+
+        class FakeCompletion:
+            def model_dump(self) -> dict:
+                return {"choices": [{"message": {"content": "当前没有接入实时天气工具。"}}]}
+
+        class FakeCompletions:
+            def create(self, **payload: object) -> FakeCompletion:
+                calls["payload"] = payload
+                return FakeCompletion()
+
+        class FakeChat:
+            def __init__(self) -> None:
+                self.completions = FakeCompletions()
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs: object) -> None:
+                calls["client"] = kwargs
+                self.chat = FakeChat()
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        previous_openai = sys.modules.get("openai")
+        sys.modules["openai"] = fake_openai
+
+        try:
+            answer = generate_chat_answer(
+                LLMConfig(
+                    api_key="test-key",
+                    base_url="https://api.deepseek.com",
+                    model="deepseek-chat",
+                ),
+                "今天天气多少",
+                [],
+            )
+        finally:
+            if previous_openai is None:
+                sys.modules.pop("openai", None)
+            else:
+                sys.modules["openai"] = previous_openai
+
+        self.assertEqual(answer, "当前没有接入实时天气工具。")
+        self.assertEqual(calls["payload"]["model"], "deepseek-chat")
+        self.assertEqual(calls["payload"]["temperature"], 0.4)
+        self.assertNotIn("知识库上下文", calls["payload"]["messages"][1]["content"])
 
 
 if __name__ == "__main__":
