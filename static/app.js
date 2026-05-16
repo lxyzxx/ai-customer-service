@@ -9,7 +9,14 @@ const docContent = document.querySelector("#doc-content");
 
 let sessionId = localStorage.getItem("internal-qa-bot-session-id") || "";
 
-function addMessage(role, content, sources = [], route = null, chatbotKnowledge = []) {
+function addMessage(
+  role,
+  content,
+  sources = [],
+  route = null,
+  chatbotKnowledge = [],
+  retrievalTrace = [],
+) {
   const item = document.createElement("article");
   item.className = `message ${role}`;
   item.textContent = content;
@@ -19,6 +26,15 @@ function addMessage(role, content, sources = [], route = null, chatbotKnowledge 
     routeItem.className = "route";
     routeItem.textContent = `分层：${route.layer} / ${route.handler}。${route.reason}`;
     item.appendChild(routeItem);
+  }
+
+  if (retrievalTrace.length > 0) {
+    const traceItem = document.createElement("div");
+    traceItem.className = "trace";
+    traceItem.textContent = `检索轨迹：${retrievalTrace
+      .map((step) => `${step.label}(${step.matched_sources})`)
+      .join(" -> ")}`;
+    item.appendChild(traceItem);
   }
 
   if (sources.length > 0) {
@@ -115,7 +131,14 @@ chatForm.addEventListener("submit", async (event) => {
     localStorage.setItem("internal-qa-bot-session-id", sessionId);
     chat.lastElementChild.remove();
     const chatbotKnowledge = data.chatbot_knowledge || [];
-    addMessage("assistant", data.answer, data.sources, data.route, chatbotKnowledge);
+    addMessage(
+      "assistant",
+      data.answer,
+      data.sources,
+      data.route,
+      chatbotKnowledge,
+      data.retrieval_trace || [],
+    );
   } catch (error) {
     chat.lastElementChild.remove();
     addMessage("assistant", `请求失败：${error.message}`);

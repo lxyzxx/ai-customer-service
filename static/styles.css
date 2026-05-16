@@ -97,6 +97,7 @@ h2 {
 .topbar p,
 .status,
 .route,
+.trace,
 .source,
 .empty {
   color: var(--muted);
@@ -144,6 +145,13 @@ h2 {
 .route {
   margin-top: 12px;
   border-left: 3px solid var(--brand);
+  padding-left: 10px;
+  white-space: normal;
+}
+
+.trace {
+  margin-top: 8px;
+  border-left: 3px solid #2563eb;
   padding-left: 10px;
   white-space: normal;
 }

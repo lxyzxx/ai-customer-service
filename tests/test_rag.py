@@ -22,6 +22,7 @@ class RAGServiceTest(unittest.TestCase):
         self.assertEqual(result["route"]["handler"], "llm_chat")
         self.assertEqual(result["sources"], [])
         self.assertEqual(result["chatbot_knowledge"], [])
+        self.assertEqual(result["retrieval_trace"], [])
 
     def test_knowledge_route_includes_bm25_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -37,6 +38,14 @@ class RAGServiceTest(unittest.TestCase):
         self.assertEqual(result["route"]["layer"], "knowledge_evidence")
         self.assertEqual(result["sources"][0]["title"], "会议室预约制度")
         self.assertIn("SQLite FTS5/BM25 召回", result["sources"][0]["evidence"])
+        self.assertIn(
+            {"name": "bm25", "label": "SQLite FTS5/BM25 全文召回", "matched_sources": 1},
+            result["retrieval_trace"],
+        )
+        self.assertIn(
+            {"name": "context", "label": "相邻 chunk 上下文核验", "matched_sources": 1},
+            result["retrieval_trace"],
+        )
 
 
 if __name__ == "__main__":

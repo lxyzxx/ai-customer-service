@@ -12,7 +12,7 @@ from app.problem_layers import (
     classify_problem,
     route_to_dict,
 )
-from app.retriever import retrieve
+from app.retriever import RetrievalHit, retrieve
 from app.storage import Storage
 
 
@@ -76,6 +76,7 @@ class RAGService:
             "session_id": active_session_id,
             "answer": answer,
             "route": route_to_dict(route),
+            "retrieval_trace": build_retrieval_trace(hits),
             "chatbot_knowledge": chatbot_knowledge,
             "sources": [
                 {
@@ -90,3 +91,34 @@ class RAGService:
                 for hit in hits
             ],
         }
+
+
+def build_retrieval_trace(hits: list[RetrievalHit]) -> list[dict[str, str | int]]:
+    if not hits:
+        return []
+
+    channels = [
+        ("keyword", "原文关键词命中", "原文命中"),
+        ("bm25", "SQLite FTS5/BM25 全文召回", "SQLite FTS5/BM25 召回"),
+        ("tfidf", "TF-IDF 弱线索召回", "TF-IDF 弱线索召回"),
+        ("vector", "向量语义召回", "向量语义召回"),
+    ]
+    trace: list[dict[str, str | int]] = []
+    for name, label, marker in channels:
+        matched = sum(
+            1
+            for hit in hits
+            if any(marker in evidence for evidence in hit.evidence)
+        )
+        if matched > 0:
+            trace.append({"name": name, "label": label, "matched_sources": matched})
+
+    if any(hit.context for hit in hits):
+        trace.append(
+            {
+                "name": "context",
+                "label": "相邻 chunk 上下文核验",
+                "matched_sources": len(hits),
+            }
+        )
+    return trace
