@@ -37,6 +37,13 @@ class Settings:
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.embedding_api_key = os.getenv("EMBEDDING_API_KEY", self.openai_api_key)
+        self.embedding_base_url = os.getenv("EMBEDDING_BASE_URL", self.openai_base_url)
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+        self.embedding_dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
+        self.qdrant_url = os.getenv("QDRANT_URL", "")
+        self.qdrant_api_key = os.getenv("QDRANT_API_KEY", "")
+        self.qdrant_collection = os.getenv("QDRANT_COLLECTION", "internal_qa_chunks")
         self.top_k = int(os.getenv("RAG_TOP_K", "4"))
 
 
