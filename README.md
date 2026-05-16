@@ -35,6 +35,12 @@ http://127.0.0.1:8000
 
 首次启动会自动导入 `data/knowledge/sample_faq.md` 作为示例知识库。
 
+FastAPI 会自动提供接口文档：
+
+```text
+http://127.0.0.1:8000/docs
+```
+
 ## 配置模型
 
 复制环境变量模板：
@@ -104,7 +110,7 @@ internal-qa-bot/
     llm.py          # 模型调用和 fallback
     rag.py          # RAG 编排
     storage.py      # SQLite 持久化
-    server.py       # HTTP API 和静态资源服务
+    server.py       # FastAPI HTTP API 和静态资源服务
   data/knowledge/   # 示例知识库
   static/           # 前端页面
   tests/            # 单元测试
@@ -193,7 +199,7 @@ python3 -m unittest discover -s tests
 
 ## 后续路线
 
-- 后端替换为 FastAPI，增加 OpenAPI 文档和鉴权
+- 增加鉴权、用户权限和管理端接口
 - 检索层增加 BM25 / SQLite FTS / Elasticsearch，提高大规模全文检索能力
 - 将当前零依赖 hash vector recall 替换为 embedding 模型 + FAISS、Milvus 或 pgvector
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文

@@ -4,8 +4,13 @@ version = "0.1.0"
 description = "Minimal internal question answering bot with direct corpus retrieval, context checks, chat, and source tracing."
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115.0,<0.116.0",
     "openai>=1.0.0",
+    "uvicorn[standard]>=0.30.0,<0.31.0",
 ]
 
 [tool.ruff]
 line-length = 100
+
+[tool.setuptools.packages.find]
+include = ["app*"]

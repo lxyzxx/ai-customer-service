@@ -66,7 +66,7 @@ async function requestJson(url, options = {}) {
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || "请求失败");
+    throw new Error(data.error || data.detail || "请求失败");
   }
   return data;
 }

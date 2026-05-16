@@ -2,10 +2,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+*.egg-info/
 .env
 data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 .DS_Store
-
