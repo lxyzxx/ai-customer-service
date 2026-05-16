@@ -7,20 +7,19 @@ from app.vector_retriever import vector_scores
 class VectorRetrieverTest(unittest.TestCase):
     def test_vector_scores_match_semantic_aliases(self) -> None:
         scores = vector_scores(
-            "东西坏了可以换吗",
+            "差旅费用怎么报",
             [
-                (1, "商品存在质量问题可以申请售后换新。"),
-                (2, "企业用户可以申请增值税专用发票。"),
+                (1, "员工完成出差后需要提交差旅报销申请。"),
+                (2, "员工请年假需要提前在 OA 系统提交申请。"),
             ],
         )
         self.assertGreater(scores[1], scores.get(2, 0.0))
 
-    def test_chatbot_uses_vector_memory(self) -> None:
-        answer, memories = answer_general_chat("你能做什么")
-        self.assertIn("客服问题", answer)
-        self.assertEqual(memories[0]["evidence"], "chatbot 向量语义记忆")
+    def test_chatbot_uses_vector_knowledge(self) -> None:
+        answer, knowledge = answer_general_chat("你能做什么")
+        self.assertIn("内部问题", answer)
+        self.assertEqual(knowledge[0]["evidence"], "chatbot 内置知识语义召回")
 
 
 if __name__ == "__main__":
     unittest.main()
-

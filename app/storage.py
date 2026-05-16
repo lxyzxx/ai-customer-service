@@ -97,8 +97,13 @@ class Storage:
                 content=row["content"],
                 position=row["position"],
             )
-            for row in rows
+                for row in rows
         ]
+
+    def delete_document(self, document_id: int) -> None:
+        with self.connect() as db:
+            db.execute("delete from chunks where document_id = ?", (document_id,))
+            db.execute("delete from documents where id = ?", (document_id,))
 
     def add_message(self, session_id: str, role: str, content: str) -> None:
         with self.connect() as db:

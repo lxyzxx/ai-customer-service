@@ -7,9 +7,9 @@ const docForm = document.querySelector("#doc-form");
 const docTitle = document.querySelector("#doc-title");
 const docContent = document.querySelector("#doc-content");
 
-let sessionId = localStorage.getItem("ai-customer-service-session-id") || "";
+let sessionId = localStorage.getItem("ai-qa-bot-session-id") || "";
 
-function addMessage(role, content, sources = [], route = null, memories = []) {
+function addMessage(role, content, sources = [], route = null, chatbotKnowledge = []) {
   const item = document.createElement("article");
   item.className = `message ${role}`;
   item.textContent = content;
@@ -41,18 +41,18 @@ function addMessage(role, content, sources = [], route = null, memories = []) {
     item.appendChild(sourceList);
   }
 
-  if (memories.length > 0) {
-    const memoryList = document.createElement("div");
-    memoryList.className = "sources";
-    memories.forEach((memory) => {
-      const memoryItem = document.createElement("div");
-      memoryItem.className = "source";
-      memoryItem.textContent =
-        `记忆：${memory.title}，证据：${memory.evidence}，` +
-        `相关度 ${memory.score}。${memory.content}`;
-      memoryList.appendChild(memoryItem);
+  if (chatbotKnowledge.length > 0) {
+    const knowledgeList = document.createElement("div");
+    knowledgeList.className = "sources";
+    chatbotKnowledge.forEach((knowledge) => {
+      const knowledgeItem = document.createElement("div");
+      knowledgeItem.className = "source";
+      knowledgeItem.textContent =
+        `聊天知识：${knowledge.title}，证据：${knowledge.evidence}，` +
+        `相关度 ${knowledge.score}。${knowledge.content}`;
+      knowledgeList.appendChild(knowledgeItem);
     });
-    item.appendChild(memoryList);
+    item.appendChild(knowledgeList);
   }
 
   chat.appendChild(item);
@@ -112,9 +112,10 @@ chatForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ question, session_id: sessionId || undefined }),
     });
     sessionId = data.session_id;
-    localStorage.setItem("ai-customer-service-session-id", sessionId);
+    localStorage.setItem("ai-qa-bot-session-id", sessionId);
     chat.lastElementChild.remove();
-    addMessage("assistant", data.answer, data.sources, data.route, data.memories);
+    const chatbotKnowledge = data.chatbot_knowledge || [];
+    addMessage("assistant", data.answer, data.sources, data.route, chatbotKnowledge);
   } catch (error) {
     chat.lastElementChild.remove();
     addMessage("assistant", `请求失败：${error.message}`);
@@ -146,4 +147,4 @@ checkHealth().catch(() => {
 loadDocuments().catch(() => {
   documentsEl.innerHTML = '<div class="empty">加载失败</div>';
 });
-addMessage("assistant", "你好，我会先检索知识库原文并核验上下文，再回答客服问题。");
+addMessage("assistant", "你好，我会先检索知识库原文并核验上下文，再回答内部问题。");

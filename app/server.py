@@ -17,7 +17,7 @@ rag_service = RAGService(storage)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
-    server_version = "AICustomerService/0.1"
+    server_version = "InternalQABot/0.1"
 
     def do_OPTIONS(self) -> None:
         self._send_response(204, None)
@@ -99,8 +99,19 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 def seed_sample_data() -> None:
     sample_path = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "sample_faq.md"
-    if storage.is_empty() and sample_path.exists():
-        storage.add_document("示例客服 FAQ", sample_path.read_text(encoding="utf-8"))
+    if not sample_path.exists():
+        return
+
+    documents = storage.list_documents()
+    if storage.is_empty():
+        storage.add_document("示例内部问答 FAQ", sample_path.read_text(encoding="utf-8"))
+        return
+
+    for document in documents:
+        if document["title"] == "示例客服 FAQ":
+            storage.delete_document(int(document["id"]))
+            storage.add_document("示例内部问答 FAQ", sample_path.read_text(encoding="utf-8"))
+            return
 
 
 def main() -> None:

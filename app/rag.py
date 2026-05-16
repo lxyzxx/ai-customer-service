@@ -28,20 +28,20 @@ class RAGService:
         active_session_id = session_id or str(uuid4())
         history = self.storage.get_recent_messages(active_session_id)
         route = classify_problem(cleaned_question)
-        memories: list[dict[str, str | float]] = []
+        chatbot_knowledge: list[dict[str, str | float]] = []
 
         if route.layer == GENERAL_CHAT:
-            answer, memories = answer_general_chat(cleaned_question)
+            answer, chatbot_knowledge = answer_general_chat(cleaned_question)
             hits = []
         elif route.layer == DETERMINISTIC_RULE:
             answer = (
-                "这个问题涉及投诉、赔偿、账号安全、金额异常或明确的人工转接诉求，"
-                "应按确定性规则转接人工客服，并保留当前对话记录。"
+                "这个问题涉及合规风险、账号安全、敏感信息、金额异常或明确的负责人介入诉求，"
+                "应按确定性规则转交对应负责人，并保留当前对话记录。"
             )
             hits = []
         elif route.layer == BUSINESS_TOOL:
             answer = (
-                "这个问题需要查询实时业务系统，例如订单、物流、退款或售后进度。"
+                "这个问题需要查询实时内部系统，例如审批、工单、报销、考勤或权限状态。"
                 "当前 MVP 尚未接入这些工具；生产环境应在这一层调用对应 API，而不是只查知识库。"
             )
             hits = []
@@ -66,7 +66,7 @@ class RAGService:
             "session_id": active_session_id,
             "answer": answer,
             "route": route_to_dict(route),
-            "memories": memories,
+            "chatbot_knowledge": chatbot_knowledge,
             "sources": [
                 {
                     "chunk_id": hit.chunk.id,

@@ -29,7 +29,7 @@ def build_prompt(
     recent_history = "\n".join(f"{item['role']}: {item['content']}" for item in history[-6:])
 
     system = (
-        "你是企业智能客服助手。只根据给定知识库上下文回答。"
+        "你是公司内部问答机器人。只根据给定知识库上下文回答。"
         "如果上下文没有答案，明确说明知识库中没有找到相关信息，并给出需要补充的资料。"
         "优先使用被精确命中的条款和原文上下文，回答要简洁、准确，并在相关结论后标注来源编号。"
     )
@@ -71,7 +71,7 @@ def generate_answer(
 
 def _fallback_answer(question: str, hits: list[RetrievalHit]) -> str:
     if not hits:
-        return "知识库中没有找到相关信息。建议补充与该问题相关的产品说明、售后政策或常见问题文档。"
+        return "知识库中没有找到相关信息。建议补充与该问题相关的制度说明、流程文档、操作手册或常见问题文档。"
 
     lines = ["当前未配置模型 API Key，先返回基于检索结果的摘要："]
     for index, hit in enumerate(hits, start=1):

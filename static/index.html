@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI 智能客服</title>
+    <title>AI 问答机器人</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,8 +11,8 @@
       <section class="workspace">
         <header class="topbar">
           <div>
-            <h1>AI 智能客服</h1>
-            <p>直接语料检索、上下文核验、来源追踪</p>
+            <h1>AI 问答机器人</h1>
+            <p>内部知识检索、上下文核验、来源追踪</p>
           </div>
           <div id="status" class="status">连接中</div>
         </header>
@@ -20,7 +20,7 @@
         <section id="chat" class="chat" aria-live="polite"></section>
 
         <form id="chat-form" class="composer">
-          <input id="question" name="question" placeholder="输入客户问题，例如：退款多久到账？" autocomplete="off" />
+          <input id="question" name="question" placeholder="输入内部问题，例如：差旅报销流程是什么？" autocomplete="off" />
           <button type="submit">发送</button>
         </form>
       </section>
@@ -35,7 +35,7 @@
           <h2>新增文档</h2>
           <form id="doc-form" class="doc-form">
             <input id="doc-title" placeholder="文档标题" />
-            <textarea id="doc-content" rows="10" placeholder="粘贴 FAQ、产品说明或售后政策"></textarea>
+            <textarea id="doc-content" rows="10" placeholder="粘贴 FAQ、制度说明、流程文档或操作手册"></textarea>
             <button type="submit">入库</button>
           </form>
         </section>

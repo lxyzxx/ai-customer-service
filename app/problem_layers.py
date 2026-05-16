@@ -24,21 +24,24 @@ GENERAL_PATTERNS = [
 ]
 
 ESCALATION_TERMS = [
-    "人工",
-    "转人工",
+    "负责人",
+    "转负责人",
+    "联系管理员",
     "投诉",
-    "赔偿",
+    "举报",
+    "合规",
+    "数据泄露",
+    "敏感信息",
     "账号安全",
     "盗号",
-    "支付异常",
-    "订单金额异常",
     "金额异常",
+    "人事争议",
 ]
 
 BUSINESS_TOOL_PATTERNS = [
-    re.compile(r"(查|查询|看一下|帮我看).*(订单|物流|快递|退款进度|售后进度)"),
-    re.compile(r"(我的|我这个).*(订单|物流|快递|退款|售后)"),
-    re.compile(r"(订单号|物流单号|运单号|售后单号)[:：]?\s*[a-zA-Z0-9-]{6,}"),
+    re.compile(r"(查|查询|看一下|帮我看).*(审批|工单|报销|假期余额|考勤|项目进度|系统状态)"),
+    re.compile(r"(我的|我这个).*(审批|工单|报销|假期|考勤|权限申请)"),
+    re.compile(r"(审批单号|工单号|报销单号|申请单号|ticket)[:：]?\s*[a-zA-Z0-9-]{6,}"),
 ]
 
 
@@ -50,7 +53,7 @@ def classify_problem(question: str) -> ProblemRoute:
         return ProblemRoute(
             layer=GENERAL_CHAT,
             handler="chatbot",
-            reason="普通寒暄或帮助类问题，使用 chatbot 语义记忆",
+            reason="普通寒暄或帮助类问题，使用 chatbot 内置知识",
             should_retrieve=False,
         )
 
@@ -58,18 +61,18 @@ def classify_problem(question: str) -> ProblemRoute:
         return ProblemRoute(
             layer=DETERMINISTIC_RULE,
             handler="rule_engine",
-            reason="命中高风险或人工转接规则",
+            reason="命中高风险、合规或负责人介入规则",
             should_retrieve=False,
         )
 
     if any(pattern.search(text) for pattern in BUSINESS_TOOL_PATTERNS) or re.search(
-        r"\b(order|refund|ticket|tracking)[-_]?[0-9a-z]{6,}\b",
+        r"\b(ticket|approval|expense|leave)[-_]?[0-9a-z]{6,}\b",
         lowered,
     ):
         return ProblemRoute(
             layer=BUSINESS_TOOL,
             handler="tool_call",
-            reason="需要查询实时订单、物流、退款或售后系统",
+            reason="需要查询实时审批、工单、报销、考勤或权限系统",
             should_retrieve=False,
         )
 

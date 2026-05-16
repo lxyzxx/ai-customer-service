@@ -1,2 +1,1 @@
-"""Minimal RAG customer service application."""
-
+"""Minimal RAG internal question answering application."""
