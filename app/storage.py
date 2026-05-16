@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.chunker import chunk_text
-from app.retriever import Chunk
+from app.retriever import Chunk, ExternalRetrievalScore, tokenize
 
 
 class Storage:
@@ -44,8 +44,58 @@ class Storage:
                     content text not null,
                     created_at text not null default current_timestamp
                 );
+
+                create virtual table if not exists chunks_fts using fts5(
+                    chunk_id unindexed,
+                    document_id unindexed,
+                    title,
+                    content
+                );
                 """
             )
+            self._rebuild_fts_if_empty(db)
+
+    def _rebuild_fts_if_empty(self, db: sqlite3.Connection) -> None:
+        count = db.execute("select count(*) as total from chunks_fts").fetchone()["total"]
+        if count > 0:
+            return
+
+        rows = db.execute(
+            """
+            select c.id, c.document_id, d.title, c.content
+            from chunks c
+            join documents d on d.id = c.document_id
+            order by c.id
+            """
+        ).fetchall()
+        if not rows:
+            return
+
+        db.executemany(
+            """
+            insert into chunks_fts (chunk_id, document_id, title, content)
+            values (?, ?, ?, ?)
+            """,
+            [
+                (
+                    row["id"],
+                    row["document_id"],
+                    self._fts_text(row["title"]),
+                    self._fts_text(row["content"]),
+                )
+                for row in rows
+            ],
+        )
+
+    def _fts_text(self, text: str) -> str:
+        return " ".join(tokenize(text))
+
+    def _fts_query(self, query: str) -> str:
+        tokens: list[str] = []
+        for token in tokenize(query):
+            if token not in tokens:
+                tokens.append(token)
+        return " OR ".join(f'"{token}"' for token in tokens)
 
     def add_document(self, title: str, content: str) -> dict[str, Any]:
         chunks = chunk_text(content)
@@ -63,6 +113,30 @@ class Storage:
             db.executemany(
                 "insert into chunks (document_id, content, position) values (?, ?, ?)",
                 [(document_id, chunk, index) for index, chunk in enumerate(chunks)],
+            )
+            rows = db.execute(
+                """
+                select id, content
+                from chunks
+                where document_id = ?
+                order by position
+                """,
+                (document_id,),
+            ).fetchall()
+            db.executemany(
+                """
+                insert into chunks_fts (chunk_id, document_id, title, content)
+                values (?, ?, ?, ?)
+                """,
+                [
+                    (
+                        row["id"],
+                        document_id,
+                        self._fts_text(title.strip()),
+                        self._fts_text(row["content"]),
+                    )
+                    for row in rows
+                ],
             )
         return {"id": document_id, "title": title.strip(), "chunk_count": len(chunks)}
 
@@ -102,8 +176,40 @@ class Storage:
 
     def delete_document(self, document_id: int) -> None:
         with self.connect() as db:
+            db.execute("delete from chunks_fts where document_id = ?", (document_id,))
             db.execute("delete from chunks where document_id = ?", (document_id,))
             db.execute("delete from documents where id = ?", (document_id,))
+
+    def search_chunks_fts(
+        self,
+        query: str,
+        limit: int = 8,
+    ) -> dict[int, ExternalRetrievalScore]:
+        fts_query = self._fts_query(query)
+        if not fts_query:
+            return {}
+
+        with self.connect() as db:
+            rows = db.execute(
+                """
+                select chunk_id, bm25(chunks_fts, 1.4, 1.0) as rank
+                from chunks_fts
+                where chunks_fts match ?
+                order by rank
+                limit ?
+                """,
+                (fts_query, limit),
+            ).fetchall()
+
+        scores: dict[int, ExternalRetrievalScore] = {}
+        for row in rows:
+            rank = abs(float(row["rank"]))
+            score = min(3.0, rank * 8.0 + 0.7)
+            scores[int(row["chunk_id"])] = ExternalRetrievalScore(
+                score=score,
+                evidence=("SQLite FTS5/BM25 召回",),
+            )
+        return scores
 
     def add_message(self, session_id: str, role: str, content: str) -> None:
         with self.connect() as db:

@@ -53,7 +53,14 @@ class RAGService:
             )
             hits = []
         else:
-            hits = retrieve(cleaned_question, self.storage.list_chunks(), top_k=settings.top_k)
+            chunks = self.storage.list_chunks()
+            fts_scores = self.storage.search_chunks_fts(cleaned_question, limit=settings.top_k * 3)
+            hits = retrieve(
+                cleaned_question,
+                chunks,
+                top_k=settings.top_k,
+                external_scores=fts_scores,
+            )
 
             answer = generate_answer(
                 llm_config,

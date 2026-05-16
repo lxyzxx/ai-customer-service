@@ -23,6 +23,21 @@ class RAGServiceTest(unittest.TestCase):
         self.assertEqual(result["sources"], [])
         self.assertEqual(result["chatbot_knowledge"], [])
 
+    def test_knowledge_route_includes_bm25_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = Storage(Path(temp_dir) / "app.db")
+            storage.add_document(
+                "会议室预约制度",
+                "会议室预约需要提前 1 个工作日提交申请。取消预约应提前 2 小时操作。",
+            )
+            service = RAGService(storage)
+
+            result = service.answer("会议室预约需要提前多久？")
+
+        self.assertEqual(result["route"]["layer"], "knowledge_evidence")
+        self.assertEqual(result["sources"][0]["title"], "会议室预约制度")
+        self.assertIn("SQLite FTS5/BM25 召回", result["sources"][0]["evidence"])
+
 
 if __name__ == "__main__":
     unittest.main()

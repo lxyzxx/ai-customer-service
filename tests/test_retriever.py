@@ -1,7 +1,15 @@
 import unittest
 
 from app.chunker import chunk_text
-from app.retriever import Chunk, extract_clues, read_context, retrieve, search_corpus, tokenize
+from app.retriever import (
+    Chunk,
+    ExternalRetrievalScore,
+    extract_clues,
+    read_context,
+    retrieve,
+    search_corpus,
+    tokenize,
+)
 
 
 class RetrieverTest(unittest.TestCase):
@@ -55,6 +63,23 @@ class RetrieverTest(unittest.TestCase):
         self.assertEqual(hits[0].chunk.title, "权限")
         self.assertIn("向量语义召回", hits[0].evidence)
         self.assertNotIn("原文命中 `可以`", hits[0].evidence)
+
+    def test_retrieve_merges_external_bm25_scores(self) -> None:
+        chunks = [
+            Chunk(id=1, document_id=1, title="请假", content="员工请年假需要提前提交申请。"),
+            Chunk(id=2, document_id=2, title="会议室", content="会议室预约需要提前 1 个工作日。"),
+        ]
+        hits = retrieve(
+            "会议室预约提前多久",
+            chunks,
+            top_k=1,
+            external_scores={
+                2: ExternalRetrievalScore(2.0, ("SQLite FTS5/BM25 召回",)),
+            },
+        )
+
+        self.assertEqual(hits[0].chunk.title, "会议室")
+        self.assertIn("SQLite FTS5/BM25 召回", hits[0].evidence)
 
 
 if __name__ == "__main__":

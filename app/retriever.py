@@ -61,6 +61,12 @@ class RetrievalHit:
     evidence: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ExternalRetrievalScore:
+    score: float
+    evidence: tuple[str, ...] = ()
+
+
 def tokenize(text: str) -> list[str]:
     return [t.lower() for t in TOKEN_RE.findall(text) if t.lower() not in STOPWORDS]
 
@@ -193,10 +199,16 @@ def _cosine(query_tf: Counter[str], doc_tf: Counter[str], idf: dict[str, float])
     return dot / (math.sqrt(query_norm) * math.sqrt(doc_norm))
 
 
-def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[RetrievalHit]:
+def retrieve(
+    query: str,
+    chunks: list[Chunk],
+    top_k: int = 4,
+    external_scores: dict[int, ExternalRetrievalScore] | None = None,
+) -> list[RetrievalHit]:
     if not query.strip() or not chunks:
         return []
 
+    external_scores = external_scores or {}
     clues = extract_clues(query)
     exact_matches = search_corpus(clues, chunks)
     semantic_scores = vector_scores(
@@ -207,12 +219,21 @@ def retrieve(query: str, chunks: list[Chunk], top_k: int = 4) -> list[RetrievalH
     hits: list[RetrievalHit] = []
     for chunk, doc_tf in zip(chunks, doc_tfs, strict=True):
         lexical_score, evidence = exact_matches.get(chunk.id, (0.0, ()))
+        external_score = external_scores.get(chunk.id, ExternalRetrievalScore(0.0))
         tfidf_score = _cosine(query_tf, doc_tf, idf)
         semantic_score = semantic_scores.get(chunk.id, 0.0)
-        if lexical_score == 0.0 and tfidf_score == 0.0 and semantic_score < 0.08:
+        if (
+            lexical_score == 0.0
+            and external_score.score == 0.0
+            and tfidf_score == 0.0
+            and semantic_score < 0.08
+        ):
             continue
 
-        combined_score = lexical_score + tfidf_score + semantic_score * 1.2
+        combined_score = lexical_score + external_score.score + tfidf_score + semantic_score * 1.2
+        for reason in external_score.evidence:
+            if reason not in evidence:
+                evidence = (*evidence, reason)
         if tfidf_score > 0.0:
             evidence = (*evidence, "TF-IDF 弱线索召回")
         if semantic_score >= 0.08:
