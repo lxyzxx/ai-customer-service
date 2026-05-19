@@ -23,6 +23,7 @@
 - [x] 健康检查接口：`GET /api/health`
 - [x] 文档列表接口：`GET /api/documents`
 - [x] 新增知识库文档接口：`POST /api/documents`
+- [x] 批量导入接口：`POST /api/documents/batch`
 - [x] 问答接口：`POST /api/chat`
 - [x] SQLite 持久化文档、chunk 和聊天记录
 - [x] 示例知识库首次启动自动导入
@@ -44,6 +45,7 @@
 - [x] 命中 chunk 后读取同文档相邻上下文
 - [x] 回答返回来源、证据线索、相关度和上下文
 - [x] 前端展示分层结果、检索轨迹和来源
+- [x] 前端支持多选 Markdown/TXT 文件批量导入
 - [x] README 已更新当前架构、配置、API、检索设计和后续路线
 - [x] 单元测试覆盖 config、embedding、llm、problem_layers、qdrant_index、rag、retriever、server、storage、vector_retriever
 
@@ -58,7 +60,7 @@
 - [ ] PDF 导入
 - [ ] Word 导入
 - [ ] 网页导入
-- [ ] Markdown 批量导入
+- [ ] PDF、Word、网页等复杂文档解析
 - [ ] OA 工具调用
 - [ ] ITSM 工具调用
 - [ ] HR 工具调用
@@ -81,8 +83,8 @@
 
 结果：
 
-- 47 个测试被发现
-- 47 个测试通过
+- 51 个测试被发现
+- 51 个测试通过
 
 备注：
 
@@ -100,18 +102,14 @@ python3 -m venv .venv
 
 ## 下次优先级
 
-1. 增加批量导入
-   - 目标：支持一次导入多个 Markdown 或文本文件。
-   - PDF/Word 可以后置，先补 Markdown 批量导入。
-
-2. 增加管理端基础能力
+1. 增加管理端基础能力
    - 文档删除
    - 文档重新入库
    - 查看 chunk
    - 查看无答案问题
    - 查看反馈
 
-3. 接入真实业务工具
+2. 接入真实业务工具
    - 先定义工具调用接口和 mock adapter。
    - 再接 OA、ITSM、HR、财务等真实 API。
 
@@ -132,6 +130,6 @@ python3 -m venv .venv
 
 - Qdrant 是可选增强，不配置时系统仍能用 SQLite FTS5/BM25、TF-IDF 和轻量向量 fallback 工作。
 - 只有配置 Qdrant 后新增的文档会自动写入 Qdrant；历史文档可以通过 `POST /api/vector-index/rebuild` 批量同步。
-- `ADMIN_API_TOKEN` 为空时写接口不鉴权；配置后，文档入库和向量重建需要 `Authorization: Bearer ...` 或 `X-Admin-Token`。
+- `ADMIN_API_TOKEN` 为空时写接口不鉴权；配置后，单文档入库、批量入库和向量重建需要 `Authorization: Bearer ...` 或 `X-Admin-Token`。
 - 当前业务工具层只是路由和占位回答，还没有调用真实内部系统。
 - 当前前端是基础操作台，不是完整管理端。

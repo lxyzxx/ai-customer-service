@@ -41,6 +41,10 @@ class DocumentRequest(BaseModel):
     content: str
 
 
+class BatchDocumentsRequest(BaseModel):
+    documents: list[DocumentRequest]
+
+
 class ChatRequest(BaseModel):
     question: str
     session_id: str | None = None
@@ -139,6 +143,57 @@ def rebuild_vector_index(
     }
 
 
+def add_document_with_vector_sync(
+    storage_instance: Storage,
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex,
+    document: DocumentRequest,
+) -> dict[str, Any]:
+    result = storage_instance.add_document(document.title, document.content)
+    return {
+        **result,
+        **sync_vector_index(vector_index_instance, storage_instance, int(result["id"])),
+    }
+
+
+def add_documents_batch(
+    storage_instance: Storage,
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex,
+    documents: list[DocumentRequest],
+) -> dict[str, Any]:
+    if not documents:
+        raise ValueError("documents is required")
+
+    results = []
+    succeeded = 0
+    failed = 0
+    for index, document in enumerate(documents):
+        try:
+            result = add_document_with_vector_sync(
+                storage_instance,
+                vector_index_instance,
+                document,
+            )
+            results.append({"index": index, "status": "ok", **result})
+            succeeded += 1
+        except ValueError as exc:
+            results.append(
+                {
+                    "index": index,
+                    "status": "failed",
+                    "title": document.title,
+                    "error": str(exc),
+                }
+            )
+            failed += 1
+
+    return {
+        "documents_total": len(documents),
+        "documents_succeeded": succeeded,
+        "documents_failed": failed,
+        "results": results,
+    }
+
+
 def validate_admin_token(
     expected_token: str,
     authorization: str | None,
@@ -197,11 +252,22 @@ def create_app(
     async def add_document(payload: DocumentRequest, request: Request) -> dict[str, Any]:
         require_admin(request)
         try:
-            result = storage_instance.add_document(payload.title, payload.content)
-            return {
-                **result,
-                **sync_vector_index(vector_index_instance, storage_instance, int(result["id"])),
-            }
+            return add_document_with_vector_sync(storage_instance, vector_index_instance, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @api.post("/api/documents/batch", status_code=201)
+    async def add_documents_batch_endpoint(
+        payload: BatchDocumentsRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        require_admin(request)
+        try:
+            return add_documents_batch(
+                storage_instance,
+                vector_index_instance,
+                payload.documents,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

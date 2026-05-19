@@ -81,6 +81,7 @@ ADMIN_API_TOKEN=替换成足够随机的管理密钥
 以下写接口会要求带管理 token：
 
 - `POST /api/documents`
+- `POST /api/documents/batch`
 - `POST /api/vector-index/rebuild`
 
 请求可以使用 Bearer token：
@@ -219,6 +220,52 @@ X-Admin-Token: 可选，配置 ADMIN_API_TOKEN 后必填
 
 ```http
 GET /api/documents
+```
+
+### 批量导入知识库文档
+
+前端支持一次选择多个 `.md` 或 `.txt` 文件，浏览器会读取文件内容并调用批量入库接口。文件名会作为文档标题，去掉 `.md`、`.markdown` 或 `.txt` 后缀。
+
+接口也可以直接接收 JSON：
+
+```http
+POST /api/documents/batch
+Content-Type: application/json
+X-Admin-Token: 可选，配置 ADMIN_API_TOKEN 后必填
+
+{
+  "documents": [
+    {
+      "title": "VPN 申请流程",
+      "content": "VPN 申请需要填写权限申请单..."
+    },
+    {
+      "title": "会议室预约制度",
+      "content": "会议室预约需要提前 1 个工作日..."
+    }
+  ]
+}
+```
+
+响应会返回每个文档的入库和向量同步状态：
+
+```json
+{
+  "documents_total": 2,
+  "documents_succeeded": 2,
+  "documents_failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "status": "ok",
+      "id": 1,
+      "title": "VPN 申请流程",
+      "chunk_count": 1,
+      "vector_indexed": false,
+      "vector_index_status": "disabled"
+    }
+  ]
+}
 ```
 
 ### 重建向量索引
@@ -455,6 +502,6 @@ curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
 - 增加用户权限和管理端接口
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文
 - 增加检索轨迹面板，展示系统如何搜索、命中和核验证据
-- 文档解析支持 PDF、Word、网页和 Markdown 批量导入
+- 文档解析支持 PDF、Word 和网页导入
 - 接入 OA、ITSM、HR、财务等内部系统工具
 - 增加管理端：知识库版本、命中率、无答案问题、回答反馈和质检

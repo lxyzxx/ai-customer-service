@@ -138,6 +138,70 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(json.loads(body)["vector_indexed"])
         self.assertEqual(vector_index.upserted_titles, ["会议室预约制度"])
 
+    def test_batch_document_endpoint_imports_documents(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        vector_index = RecordingVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index)
+
+        status, _, body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents/batch",
+                {
+                    "documents": [
+                        {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"},
+                        {"title": "VPN 申请流程", "content": "VPN 申请需要填写权限申请单。"},
+                    ]
+                },
+            )
+        )
+
+        data = json.loads(body)
+        self.assertEqual(status, 201)
+        self.assertEqual(data["documents_total"], 2)
+        self.assertEqual(data["documents_succeeded"], 2)
+        self.assertEqual(data["documents_failed"], 0)
+        self.assertEqual([item["status"] for item in data["results"]], ["ok", "ok"])
+        self.assertEqual(vector_index.upserted_titles, ["会议室预约制度", "VPN 申请流程"])
+
+    def test_batch_document_endpoint_reports_per_document_failures(self) -> None:
+        app = self.make_app()
+
+        status, _, body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents/batch",
+                {
+                    "documents": [
+                        {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"},
+                        {"title": "", "content": "标题为空会失败。"},
+                    ]
+                },
+            )
+        )
+
+        data = json.loads(body)
+        self.assertEqual(status, 201)
+        self.assertEqual(data["documents_total"], 2)
+        self.assertEqual(data["documents_succeeded"], 1)
+        self.assertEqual(data["documents_failed"], 1)
+        self.assertEqual([item["status"] for item in data["results"]], ["ok", "failed"])
+        self.assertEqual(data["results"][1]["error"], "title is required")
+
+    def test_batch_document_endpoint_rejects_empty_batch(self) -> None:
+        app = self.make_app()
+
+        status, _, body = asyncio.run(
+            request(app, "POST", "/api/documents/batch", {"documents": []})
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["detail"], "documents is required")
+
     def test_admin_token_validation_is_disabled_without_config(self) -> None:
         validate_admin_token("", None, None)
 
@@ -183,6 +247,44 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(json.loads(missing_body)["detail"], "invalid admin token")
         self.assertEqual(ok_status, 201)
         self.assertEqual(json.loads(ok_body)["title"], "会议室预约制度")
+
+    def test_admin_token_protects_batch_document_create_when_configured(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        vector_index = NullVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index, "secret-token")
+
+        missing_status, _, missing_body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents/batch",
+                {
+                    "documents": [
+                        {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"}
+                    ]
+                },
+            )
+        )
+        ok_status, _, ok_body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents/batch",
+                {
+                    "documents": [
+                        {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"}
+                    ]
+                },
+                {"x-admin-token": "secret-token"},
+            )
+        )
+
+        self.assertEqual(missing_status, 401)
+        self.assertEqual(json.loads(missing_body)["detail"], "invalid admin token")
+        self.assertEqual(ok_status, 201)
+        self.assertEqual(json.loads(ok_body)["documents_succeeded"], 1)
 
     def test_admin_token_protects_vector_rebuild_when_configured(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()

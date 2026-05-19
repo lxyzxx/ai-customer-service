@@ -99,6 +99,7 @@ h2 {
 .route,
 .trace,
 .source,
+.batch-status,
 .empty {
   color: var(--muted);
   font-size: 13px;
@@ -185,6 +186,12 @@ input {
   padding: 0 12px;
 }
 
+input[type="file"] {
+  height: auto;
+  padding: 10px 12px;
+  background: #fbfdff;
+}
+
 textarea {
   min-height: 180px;
   resize: vertical;
@@ -237,6 +244,11 @@ textarea:focus {
 .doc-form {
   display: grid;
   gap: 10px;
+}
+
+.batch-status {
+  margin-top: 10px;
+  min-height: 18px;
 }
 
 @media (max-width: 900px) {

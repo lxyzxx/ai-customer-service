@@ -40,6 +40,15 @@
             <button type="submit">入库</button>
           </form>
         </section>
+
+        <section class="panel">
+          <h2>批量导入</h2>
+          <form id="batch-form" class="doc-form">
+            <input id="batch-files" type="file" accept=".md,.txt,text/markdown,text/plain" multiple />
+            <button type="submit">导入文件</button>
+          </form>
+          <div id="batch-status" class="batch-status"></div>
+        </section>
       </aside>
     </main>
 

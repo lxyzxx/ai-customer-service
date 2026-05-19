@@ -7,6 +7,9 @@ const docForm = document.querySelector("#doc-form");
 const adminToken = document.querySelector("#admin-token");
 const docTitle = document.querySelector("#doc-title");
 const docContent = document.querySelector("#doc-content");
+const batchForm = document.querySelector("#batch-form");
+const batchFiles = document.querySelector("#batch-files");
+const batchStatus = document.querySelector("#batch-status");
 
 let sessionId = localStorage.getItem("internal-qa-bot-session-id") || "";
 adminToken.value = localStorage.getItem("internal-qa-bot-admin-token") || "";
@@ -176,6 +179,39 @@ docForm.addEventListener("submit", async (event) => {
     await loadDocuments();
   } catch (error) {
     alert(`入库失败：${error.message}`);
+  }
+});
+
+function titleFromFileName(name) {
+  return name.replace(/\.(md|markdown|txt)$/i, "").trim() || name;
+}
+
+batchForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const files = Array.from(batchFiles.files || []);
+  if (files.length === 0) return;
+
+  batchStatus.textContent = "正在读取文件...";
+  try {
+    const documents = await Promise.all(
+      files.map(async (file) => ({
+        title: titleFromFileName(file.name),
+        content: await file.text(),
+      })),
+    );
+    batchStatus.textContent = "正在导入...";
+    const data = await requestJson("/api/documents/batch", {
+      method: "POST",
+      admin: true,
+      body: JSON.stringify({ documents }),
+    });
+    batchFiles.value = "";
+    batchStatus.textContent =
+      `导入完成：成功 ${data.documents_succeeded} 个，` +
+      `失败 ${data.documents_failed} 个。`;
+    await loadDocuments();
+  } catch (error) {
+    batchStatus.textContent = `导入失败：${error.message}`;
   }
 });
 
