@@ -19,6 +19,7 @@
 
 - [x] FastAPI 后端服务
 - [x] 静态前端页面
+- [x] 最小管理鉴权：配置 `ADMIN_API_TOKEN` 后保护写接口
 - [x] 健康检查接口：`GET /api/health`
 - [x] 文档列表接口：`GET /api/documents`
 - [x] 新增知识库文档接口：`POST /api/documents`
@@ -48,7 +49,7 @@
 
 ## 未完成
 
-- [ ] 鉴权和登录
+- [ ] 登录页面和用户会话
 - [ ] 用户权限模型
 - [ ] 管理端接口
 - [ ] Qdrant collection 维度变更后的自动处理或清晰错误提示
@@ -80,8 +81,8 @@
 
 结果：
 
-- 41 个测试被发现
-- 41 个测试通过
+- 47 个测试被发现
+- 47 个测试通过
 
 备注：
 
@@ -99,22 +100,18 @@ python3 -m venv .venv
 
 ## 下次优先级
 
-1. 增加最小鉴权
-   - 目标：保护文档新增、后续管理端和内部接口。
-   - MVP 可以先用固定管理 token 或简单 session。
-
-2. 增加批量导入
+1. 增加批量导入
    - 目标：支持一次导入多个 Markdown 或文本文件。
    - PDF/Word 可以后置，先补 Markdown 批量导入。
 
-3. 增加管理端基础能力
+2. 增加管理端基础能力
    - 文档删除
    - 文档重新入库
    - 查看 chunk
    - 查看无答案问题
    - 查看反馈
 
-4. 接入真实业务工具
+3. 接入真实业务工具
    - 先定义工具调用接口和 mock adapter。
    - 再接 OA、ITSM、HR、财务等真实 API。
 
@@ -135,5 +132,6 @@ python3 -m venv .venv
 
 - Qdrant 是可选增强，不配置时系统仍能用 SQLite FTS5/BM25、TF-IDF 和轻量向量 fallback 工作。
 - 只有配置 Qdrant 后新增的文档会自动写入 Qdrant；历史文档可以通过 `POST /api/vector-index/rebuild` 批量同步。
+- `ADMIN_API_TOKEN` 为空时写接口不鉴权；配置后，文档入库和向量重建需要 `Authorization: Bearer ...` 或 `X-Admin-Token`。
 - 当前业务工具层只是路由和占位回答，还没有调用真实内部系统。
 - 当前前端是基础操作台，不是完整管理端。

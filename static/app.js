@@ -4,10 +4,12 @@ const questionInput = document.querySelector("#question");
 const statusEl = document.querySelector("#status");
 const documentsEl = document.querySelector("#documents");
 const docForm = document.querySelector("#doc-form");
+const adminToken = document.querySelector("#admin-token");
 const docTitle = document.querySelector("#doc-title");
 const docContent = document.querySelector("#doc-content");
 
 let sessionId = localStorage.getItem("internal-qa-bot-session-id") || "";
+adminToken.value = localStorage.getItem("internal-qa-bot-admin-token") || "";
 
 function addMessage(
   role,
@@ -76,15 +78,27 @@ function addMessage(
 }
 
 async function requestJson(url, options = {}) {
+  const { admin = false, headers = {}, ...requestOptions } = options;
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    ...requestOptions,
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+      ...(admin ? adminHeaders() : {}),
+    },
   });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || data.detail || "请求失败");
   }
   return data;
+}
+
+function adminHeaders() {
+  const token = adminToken.value.trim();
+  if (!token) return {};
+  localStorage.setItem("internal-qa-bot-admin-token", token);
+  return { "X-Admin-Token": token };
 }
 
 async function loadDocuments() {
@@ -154,6 +168,7 @@ docForm.addEventListener("submit", async (event) => {
   try {
     await requestJson("/api/documents", {
       method: "POST",
+      admin: true,
       body: JSON.stringify({ title, content }),
     });
     docTitle.value = "";

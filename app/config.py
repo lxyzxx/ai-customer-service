@@ -34,6 +34,7 @@ class Settings:
         self.host = os.getenv("APP_HOST", "127.0.0.1")
         self.port = int(os.getenv("APP_PORT", "8000"))
         self.database_path = Path(os.getenv("DATABASE_PATH", DATA_DIR / "app.db"))
+        self.admin_api_token = os.getenv("ADMIN_API_TOKEN", "")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

@@ -5,9 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.rag import RAGService
 from app.qdrant_index import NullVectorIndex
-from app.server import create_app
+from app.server import create_app, validate_admin_token
 from app.storage import Storage
 
 
@@ -32,11 +34,14 @@ async def request(
     method: str,
     path: str,
     payload: dict | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
     body = b"" if payload is None else json.dumps(payload).encode("utf-8")
     headers = [(b"host", b"testserver")]
     if payload is not None:
         headers.append((b"content-type", b"application/json"))
+    for key, value in (extra_headers or {}).items():
+        headers.append((key.lower().encode("latin-1"), value.encode("latin-1")))
 
     scope = {
         "type": "http",
@@ -132,6 +137,76 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertTrue(json.loads(body)["vector_indexed"])
         self.assertEqual(vector_index.upserted_titles, ["会议室预约制度"])
+
+    def test_admin_token_validation_is_disabled_without_config(self) -> None:
+        validate_admin_token("", None, None)
+
+    def test_admin_token_accepts_authorization_bearer(self) -> None:
+        validate_admin_token("secret-token", "Bearer secret-token", None)
+
+    def test_admin_token_accepts_x_admin_token(self) -> None:
+        validate_admin_token("secret-token", None, "secret-token")
+
+    def test_admin_token_rejects_missing_or_invalid_token(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            validate_admin_token("secret-token", None, None)
+
+        self.assertEqual(context.exception.status_code, 401)
+        self.assertEqual(context.exception.detail, "invalid admin token")
+
+    def test_admin_token_protects_document_create_when_configured(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        vector_index = NullVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index, "secret-token")
+
+        missing_status, _, missing_body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents",
+                {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"},
+            )
+        )
+        ok_status, _, ok_body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/documents",
+                {"title": "会议室预约制度", "content": "会议室预约需要提前 1 个工作日。"},
+                {"x-admin-token": "secret-token"},
+            )
+        )
+
+        self.assertEqual(missing_status, 401)
+        self.assertEqual(json.loads(missing_body)["detail"], "invalid admin token")
+        self.assertEqual(ok_status, 201)
+        self.assertEqual(json.loads(ok_body)["title"], "会议室预约制度")
+
+    def test_admin_token_protects_vector_rebuild_when_configured(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        vector_index = NullVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index, "secret-token")
+
+        missing_status, _, missing_body = asyncio.run(
+            request(app, "POST", "/api/vector-index/rebuild")
+        )
+        ok_status, _, ok_body = asyncio.run(
+            request(
+                app,
+                "POST",
+                "/api/vector-index/rebuild",
+                extra_headers={"x-admin-token": "secret-token"},
+            )
+        )
+
+        self.assertEqual(missing_status, 401)
+        self.assertEqual(json.loads(missing_body)["detail"], "invalid admin token")
+        self.assertEqual(ok_status, 200)
+        self.assertEqual(json.loads(ok_body)["vector_index_status"], "disabled")
 
     def test_vector_index_rebuild_disabled(self) -> None:
         app = self.make_app()

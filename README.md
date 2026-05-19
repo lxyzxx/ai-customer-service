@@ -68,6 +68,35 @@ OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_MODEL=deepseek-chat
 ```
 
+## 配置管理 Token
+
+默认不配置 `ADMIN_API_TOKEN` 时，管理写接口不鉴权，方便本地开发。
+
+如果配置：
+
+```env
+ADMIN_API_TOKEN=替换成足够随机的管理密钥
+```
+
+以下写接口会要求带管理 token：
+
+- `POST /api/documents`
+- `POST /api/vector-index/rebuild`
+
+请求可以使用 Bearer token：
+
+```http
+Authorization: Bearer 替换成足够随机的管理密钥
+```
+
+也可以使用：
+
+```http
+X-Admin-Token: 替换成足够随机的管理密钥
+```
+
+前端“新增文档”面板里的“管理 Token”会随入库请求发送 `X-Admin-Token`。
+
 ## 配置 Qdrant 向量检索
 
 Qdrant 是可选增强，不配置时系统仍会使用 SQLite FTS5/BM25、TF-IDF 和轻量 hash vector recall。配置后，Qdrant 负责 embedding 向量相似度检索，SQLite 仍然是文档和 chunk 原文的主存储。
@@ -178,6 +207,7 @@ GET /api/health
 ```http
 POST /api/documents
 Content-Type: application/json
+X-Admin-Token: 可选，配置 ADMIN_API_TOKEN 后必填
 
 {
   "title": "差旅报销制度",
@@ -197,6 +227,7 @@ GET /api/documents
 
 ```http
 POST /api/vector-index/rebuild
+X-Admin-Token: 可选，配置 ADMIN_API_TOKEN 后必填
 ```
 
 响应会包含每个文档的同步状态：
@@ -421,7 +452,7 @@ curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
 
 ## 后续路线
 
-- 增加鉴权、用户权限和管理端接口
+- 增加用户权限和管理端接口
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文
 - 增加检索轨迹面板，展示系统如何搜索、命中和核验证据
 - 文档解析支持 PDF、Word、网页和 Markdown 批量导入

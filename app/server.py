@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -138,15 +139,39 @@ def rebuild_vector_index(
     }
 
 
+def validate_admin_token(
+    expected_token: str,
+    authorization: str | None,
+    x_admin_token: str | None,
+) -> None:
+    if not expected_token:
+        return
+
+    provided_token = x_admin_token or ""
+    if authorization and authorization.lower().startswith("bearer "):
+        provided_token = authorization[7:].strip()
+
+    if not hmac.compare_digest(provided_token, expected_token):
+        raise HTTPException(status_code=401, detail="invalid admin token")
+
+
 def create_app(
     storage_instance: Storage = storage,
     rag_service_instance: RAGService = rag_service,
     vector_index_instance: NullVectorIndex | QdrantVectorIndex = vector_index,
+    admin_api_token: str = settings.admin_api_token,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         seed_sample_data(storage_instance, vector_index_instance)
         yield
+
+    def require_admin(request: Request) -> None:
+        validate_admin_token(
+            admin_api_token,
+            request.headers.get("authorization"),
+            request.headers.get("x-admin-token"),
+        )
 
     api = FastAPI(
         title="Internal QA Bot",
@@ -157,7 +182,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", "X-Admin-Token"],
     )
 
     @api.get("/api/health")
@@ -169,7 +194,8 @@ def create_app(
         return {"documents": storage_instance.list_documents()}
 
     @api.post("/api/documents", status_code=201)
-    async def add_document(payload: DocumentRequest) -> dict[str, Any]:
+    async def add_document(payload: DocumentRequest, request: Request) -> dict[str, Any]:
+        require_admin(request)
         try:
             result = storage_instance.add_document(payload.title, payload.content)
             return {
@@ -180,7 +206,8 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @api.post("/api/vector-index/rebuild")
-    async def rebuild_vector_index_endpoint() -> dict[str, Any]:
+    async def rebuild_vector_index_endpoint(request: Request) -> dict[str, Any]:
+        require_admin(request)
         return rebuild_vector_index(vector_index_instance, storage_instance)
 
     @api.post("/api/chat")
