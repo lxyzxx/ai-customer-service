@@ -133,6 +133,48 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(json.loads(body)["vector_indexed"])
         self.assertEqual(vector_index.upserted_titles, ["会议室预约制度"])
 
+    def test_vector_index_rebuild_disabled(self) -> None:
+        app = self.make_app()
+
+        status, _, body = asyncio.run(request(app, "POST", "/api/vector-index/rebuild"))
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            json.loads(body),
+            {
+                "vector_indexed": False,
+                "vector_index_status": "disabled",
+                "documents_total": 0,
+                "documents_succeeded": 0,
+                "documents_failed": 0,
+                "results": [],
+            },
+        )
+
+    def test_vector_index_rebuild_syncs_existing_documents(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        storage = Storage(Path(temp_dir.name) / "app.db")
+        storage.add_document("会议室预约制度", "会议室预约需要提前 1 个工作日。")
+        storage.add_document("VPN 申请流程", "VPN 申请需要填写权限申请单。")
+        vector_index = RecordingVectorIndex()
+        app = create_app(storage, RAGService(storage, vector_index), vector_index)
+
+        status, _, body = asyncio.run(request(app, "POST", "/api/vector-index/rebuild"))
+
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertTrue(data["vector_indexed"])
+        self.assertEqual(data["vector_index_status"], "ok")
+        self.assertEqual(data["documents_total"], 2)
+        self.assertEqual(data["documents_succeeded"], 2)
+        self.assertEqual(data["documents_failed"], 0)
+        self.assertEqual(vector_index.upserted_titles, ["VPN 申请流程", "会议室预约制度"])
+        self.assertEqual(
+            [item["title"] for item in data["results"]],
+            ["VPN 申请流程", "会议室预约制度"],
+        )
+
     def test_chat_endpoint(self) -> None:
         with patch("app.rag.generate_chat_answer", return_value="你好"):
             status, _, body = asyncio.run(

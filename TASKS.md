@@ -38,6 +38,7 @@
 - [x] OpenAI-compatible embedding provider
 - [x] 本地 sentence-transformers embedding provider
 - [x] 新增文档时尽力同步 Qdrant
+- [x] 向量索引重建接口：已有 SQLite 文档批量重算 embedding 并同步 Qdrant
 - [x] Qdrant 不可用时文档入库不失败，只标记向量索引未完成
 - [x] 命中 chunk 后读取同文档相邻上下文
 - [x] 回答返回来源、证据线索、相关度和上下文
@@ -50,7 +51,6 @@
 - [ ] 鉴权和登录
 - [ ] 用户权限模型
 - [ ] 管理端接口
-- [ ] 向量索引重建接口：已有 SQLite 文档批量重算 embedding 并同步 Qdrant
 - [ ] Qdrant collection 维度变更后的自动处理或清晰错误提示
 - [ ] 多轮检索计划：先查精确词，再查别名/同义词，再读上下文
 - [ ] 检索轨迹独立面板和更细粒度 trace
@@ -75,51 +75,46 @@
 最近一次验证命令：
 
 ```bash
-python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests
 ```
 
 结果：
 
-- 36 个测试被发现
-- 35 个测试通过
-- 1 个测试导入失败：`tests/test_server.py`
+- 41 个测试被发现
+- 41 个测试通过
 
-失败原因：
+备注：
 
-- 当前环境缺少运行依赖 `uvicorn`
-- 错误是 `ModuleNotFoundError: No module named 'uvicorn'`
-- 这不是业务断言失败，更像本地环境没有执行 `python3 -m pip install -e .`
+- 系统 Python 被 PEP 668 保护，不能直接执行 `python3 -m pip install -e .`。
+- 已在项目内 `.venv` 安装依赖并通过测试。
+- `.venv/` 已在 `.gitignore` 中，不会提交。
 
 下次验证建议：
 
 ```bash
-python3 -m pip install -e .
-python3 -m unittest discover -s tests
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m unittest discover -s tests
 ```
 
 ## 下次优先级
 
-1. 增加向量索引重建接口
-   - 目标：已有 SQLite 文档可以批量同步到 Qdrant。
-   - 建议接口：`POST /api/vector-index/rebuild`
-   - 返回每个文档的同步状态、成功数量、失败数量和错误信息。
-
-2. 增加最小鉴权
+1. 增加最小鉴权
    - 目标：保护文档新增、后续管理端和内部接口。
    - MVP 可以先用固定管理 token 或简单 session。
 
-3. 增加批量导入
+2. 增加批量导入
    - 目标：支持一次导入多个 Markdown 或文本文件。
    - PDF/Word 可以后置，先补 Markdown 批量导入。
 
-4. 增加管理端基础能力
+3. 增加管理端基础能力
    - 文档删除
    - 文档重新入库
    - 查看 chunk
    - 查看无答案问题
    - 查看反馈
 
-5. 接入真实业务工具
+4. 接入真实业务工具
    - 先定义工具调用接口和 mock adapter。
    - 再接 OA、ITSM、HR、财务等真实 API。
 
@@ -139,6 +134,6 @@ python3 -m unittest discover -s tests
 ## 注意事项
 
 - Qdrant 是可选增强，不配置时系统仍能用 SQLite FTS5/BM25、TF-IDF 和轻量向量 fallback 工作。
-- 只有配置 Qdrant 后新增的文档会自动写入 Qdrant；历史文档需要后续“向量索引重建接口”补齐。
+- 只有配置 Qdrant 后新增的文档会自动写入 Qdrant；历史文档可以通过 `POST /api/vector-index/rebuild` 批量同步。
 - 当前业务工具层只是路由和占位回答，还没有调用真实内部系统。
 - 当前前端是基础操作台，不是完整管理端。

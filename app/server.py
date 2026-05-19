@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -97,6 +96,48 @@ def sync_vector_index(
     return {"vector_indexed": True, "vector_index_status": "ok"}
 
 
+def rebuild_vector_index(
+    vector_index_instance: NullVectorIndex | QdrantVectorIndex,
+    storage_instance: Storage,
+) -> dict[str, Any]:
+    documents = storage_instance.list_documents()
+    if not vector_index_instance.enabled:
+        return {
+            "vector_indexed": False,
+            "vector_index_status": "disabled",
+            "documents_total": len(documents),
+            "documents_succeeded": 0,
+            "documents_failed": 0,
+            "results": [],
+        }
+
+    results = []
+    succeeded = 0
+    failed = 0
+    for document in documents:
+        document_id = int(document["id"])
+        result = sync_vector_index(vector_index_instance, storage_instance, document_id)
+        item = {
+            "document_id": document_id,
+            "title": document["title"],
+            **result,
+        }
+        results.append(item)
+        if result["vector_indexed"]:
+            succeeded += 1
+        else:
+            failed += 1
+
+    return {
+        "vector_indexed": failed == 0,
+        "vector_index_status": "ok" if failed == 0 else "partial_failed",
+        "documents_total": len(documents),
+        "documents_succeeded": succeeded,
+        "documents_failed": failed,
+        "results": results,
+    }
+
+
 def create_app(
     storage_instance: Storage = storage,
     rag_service_instance: RAGService = rag_service,
@@ -138,6 +179,10 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @api.post("/api/vector-index/rebuild")
+    async def rebuild_vector_index_endpoint() -> dict[str, Any]:
+        return rebuild_vector_index(vector_index_instance, storage_instance)
+
     @api.post("/api/chat")
     async def chat(payload: ChatRequest) -> dict[str, Any]:
         try:
@@ -155,6 +200,8 @@ app = create_app()
 
 
 def main() -> None:
+    import uvicorn
+
     uvicorn.run(
         "app.server:app",
         host=settings.host,

@@ -163,7 +163,7 @@ curl -s -X POST http://127.0.0.1:6333/collections/internal_qa_chunks/points/scro
 
 `sources[].evidence` 也会出现 `Qdrant 向量召回`。
 
-注意：只有配置 Qdrant 后新增的文档会自动写入 Qdrant。已有 SQLite 文档需要重新添加，或等后续向量索引重建接口批量同步。
+注意：只有配置 Qdrant 后新增的文档会自动写入 Qdrant。已有 SQLite 文档可以通过 `POST /api/vector-index/rebuild` 批量同步。
 
 ## API
 
@@ -189,6 +189,34 @@ Content-Type: application/json
 
 ```http
 GET /api/documents
+```
+
+### 重建向量索引
+
+已有 SQLite 文档需要补写 Qdrant 时，可以触发批量重建：
+
+```http
+POST /api/vector-index/rebuild
+```
+
+响应会包含每个文档的同步状态：
+
+```json
+{
+  "vector_indexed": true,
+  "vector_index_status": "ok",
+  "documents_total": 2,
+  "documents_succeeded": 2,
+  "documents_failed": 0,
+  "results": [
+    {
+      "document_id": 2,
+      "title": "VPN 申请流程",
+      "vector_indexed": true,
+      "vector_index_status": "ok"
+    }
+  ]
+}
 ```
 
 ### 问答
@@ -394,7 +422,6 @@ curl -X DELETE http://127.0.0.1:6333/collections/internal_qa_chunks
 ## 后续路线
 
 - 增加鉴权、用户权限和管理端接口
-- 增加向量索引重建接口，用于批量重算 embedding 并同步 Qdrant
 - 增加多轮检索计划：先查精确词，再查别名和同义词，再读上下文
 - 增加检索轨迹面板，展示系统如何搜索、命中和核验证据
 - 文档解析支持 PDF、Word、网页和 Markdown 批量导入
